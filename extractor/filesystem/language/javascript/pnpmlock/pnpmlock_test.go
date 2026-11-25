@@ -258,6 +258,52 @@ func TestExtractor_Extract(t *testing.T) {
 			},
 		},
 		{
+			Name: "v9 keys under a v6 header keep their scope",
+			InputConfig: extracttest.ScanInputMockConfig{
+				Path: "testdata/v9-keys-v6-header.yaml",
+			},
+			WantPackages: []*extractor.Package{
+				{
+					Name:       "@rollup/rollup-linux-riscv64-gnu",
+					Version:    "4.53.5",
+					PURLType:   purl.TypeNPM,
+					Locations:  []string{"testdata/v9-keys-v6-header.yaml"},
+					SourceCode: &extractor.SourceCodeIdentifier{},
+					Metadata: osv.DepGroupMetadata{
+						DepGroupVals: []string{},
+					},
+				},
+				{
+					Name:       "acorn",
+					Version:    "8.7.0",
+					PURLType:   purl.TypeNPM,
+					Locations:  []string{"testdata/v9-keys-v6-header.yaml"},
+					SourceCode: &extractor.SourceCodeIdentifier{},
+					Metadata: osv.DepGroupMetadata{
+						DepGroupVals: []string{},
+					},
+				},
+			},
+		},
+		{
+			Name: "v6 keys under a v9 header keep their scope",
+			InputConfig: extracttest.ScanInputMockConfig{
+				Path: "testdata/v6-keys-v9-header.yaml",
+			},
+			WantPackages: []*extractor.Package{
+				{
+					Name:       "@rollup/rollup-linux-riscv64-gnu",
+					Version:    "4.53.5",
+					PURLType:   purl.TypeNPM,
+					Locations:  []string{"testdata/v6-keys-v9-header.yaml"},
+					SourceCode: &extractor.SourceCodeIdentifier{},
+					Metadata: osv.DepGroupMetadata{
+						DepGroupVals: []string{},
+					},
+				},
+			},
+		},
+		{
 			Name: "peer dependencies",
 			InputConfig: extracttest.ScanInputMockConfig{
 				Path: "testdata/peer-dependencies.yaml",
