@@ -304,6 +304,24 @@ func TestExtractor_Extract(t *testing.T) {
 			},
 		},
 		{
+			Name: "header with a suffix",
+			InputConfig: extracttest.ScanInputMockConfig{
+				Path: "testdata/inline-specifiers.v54.yaml",
+			},
+			WantPackages: []*extractor.Package{
+				{
+					Name:       "@typescript-eslint/types",
+					Version:    "5.57.1",
+					PURLType:   purl.TypeNPM,
+					Locations:  []string{"testdata/inline-specifiers.v54.yaml"},
+					SourceCode: &extractor.SourceCodeIdentifier{},
+					Metadata: osv.DepGroupMetadata{
+						DepGroupVals: []string{},
+					},
+				},
+			},
+		},
+		{
 			Name: "peer dependencies",
 			InputConfig: extracttest.ScanInputMockConfig{
 				Path: "testdata/peer-dependencies.yaml",

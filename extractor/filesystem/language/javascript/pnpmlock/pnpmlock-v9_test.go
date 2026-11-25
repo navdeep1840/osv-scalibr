@@ -91,6 +91,34 @@ func TestExtractor_Extract_v9(t *testing.T) {
 			},
 		},
 		{
+			Name: "multi document",
+			InputConfig: extracttest.ScanInputMockConfig{
+				Path: "testdata/multi-document.v9.yaml",
+			},
+			WantPackages: []*extractor.Package{
+				{
+					Name:       "@pnpm/exe",
+					Version:    "11.9.0",
+					PURLType:   purl.TypeNPM,
+					Locations:  []string{"testdata/multi-document.v9.yaml"},
+					SourceCode: &extractor.SourceCodeIdentifier{},
+					Metadata: osv.DepGroupMetadata{
+						DepGroupVals: []string{},
+					},
+				},
+				{
+					Name:       "acorn",
+					Version:    "8.11.3",
+					PURLType:   purl.TypeNPM,
+					Locations:  []string{"testdata/multi-document.v9.yaml"},
+					SourceCode: &extractor.SourceCodeIdentifier{},
+					Metadata: osv.DepGroupMetadata{
+						DepGroupVals: []string{},
+					},
+				},
+			},
+		},
+		{
 			Name: "peer dependencies",
 			InputConfig: extracttest.ScanInputMockConfig{
 				Path: "testdata/peer-dependencies.v9.yaml",

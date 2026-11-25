@@ -75,13 +75,8 @@ func (l *pnpmLockfile) UnmarshalYAML(unmarshal func(any) error) error {
 		return err
 	}
 
-	parsedVersion, err := strconv.ParseFloat(lockfileV6.Version, 64)
-
-	if err != nil {
-		return err
-	}
-
-	l.Version = parsedVersion
+	// "5.4-inlineSpecifiers" or a missing header must not fail the whole file.
+	l.Version, _ = strconv.ParseFloat(leadingNumberRegexp.FindString(lockfileV6.Version), 64)
 	l.Packages = lockfileV6.Packages
 
 	return nil
@@ -92,7 +87,8 @@ var (
 	// Looks for the pattern "name@version", where name is allowed to contain zero or more "@"
 	nameVersionRegexp = regexp.MustCompile(`^(.+)@([\w.-]+)(?:\(|$)`)
 	// A v9-style key: "name@version" or "@scope/name@version", with no leading "/"
-	v9KeyRegexp = regexp.MustCompile(`^(@[^/@]+/)?[^/@]+@`)
+	leadingNumberRegexp = regexp.MustCompile(`^\d+(\.\d+)?`)
+	v9KeyRegexp         = regexp.MustCompile(`^(@[^/@]+/)?[^/@]+@`)
 
 	codeLoadURLRegexp = regexp.MustCompile(`https://codeload\.github\.com(?:/[\w-.]+){2}/tar\.gz/(\w+)$`)
 )
@@ -262,25 +258,28 @@ func (e Extractor) FileRequired(api filesystem.FileAPI) bool {
 
 // Extract extracts packages from a pnpm-lock.yaml file passed through the scan input.
 func (e Extractor) Extract(ctx context.Context, input *filesystem.ScanInput) (inventory.Inventory, error) {
-	var parsedLockfile *pnpmLockfile
-
-	err := yaml.NewDecoder(input.Reader).Decode(&parsedLockfile)
-
-	if err != nil && !errors.Is(err, io.EOF) {
-		return inventory.Inventory{}, fmt.Errorf("could not extract: %w", err)
+	// pnpm 11+ can write several YAML documents (its own install first), so read them all.
+	dec := yaml.NewDecoder(input.Reader)
+	packages := []*extractor.Package{}
+	var errs []error
+	for {
+		var parsedLockfile pnpmLockfile
+		if err := dec.Decode(&parsedLockfile); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return inventory.Inventory{}, fmt.Errorf("could not extract: %w", err)
+		}
+		docPackages, err := parsePnpmLock(parsedLockfile)
+		errs = append(errs, err)
+		packages = append(packages, docPackages...)
 	}
 
-	// this will happen if the file is empty
-	if parsedLockfile == nil {
-		parsedLockfile = &pnpmLockfile{}
-	}
-
-	packages, err := parsePnpmLock(*parsedLockfile)
 	for i := range packages {
 		packages[i].Locations = []string{input.Path}
 	}
 
-	return inventory.Inventory{Packages: packages}, err
+	return inventory.Inventory{Packages: packages}, errors.Join(errs...)
 }
 
 var _ filesystem.Extractor = Extractor{}
