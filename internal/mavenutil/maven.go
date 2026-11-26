@@ -16,9 +16,13 @@
 package mavenutil
 
 import (
+	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"path/filepath"
 	"strings"
 
@@ -27,6 +31,8 @@ import (
 	"deps.dev/util/semver"
 	"github.com/google/osv-scalibr/clients/datasource"
 	"github.com/google/osv-scalibr/extractor/filesystem"
+	scalibrfs "github.com/google/osv-scalibr/fs"
+	"github.com/google/osv-scalibr/log"
 )
 
 // Origin of the dependencies.
@@ -104,6 +110,10 @@ func MergeParents(ctx context.Context, current maven.Parent, result *maven.Proje
 		// Use an empty JDK string and ActivationOS here to merge the default profiles.
 		if err := result.MergeProfiles("", maven.ActivationOS{}); err != nil {
 			return fmt.Errorf("failed to merge default profiles: %w", err)
+		}
+		// Interpolate the repositories in the project to get rid of the placeholders in URLs.
+		if err := proj.InterpolateRepositories(); err != nil {
+			return fmt.Errorf("failed to interpolate repositories: %w", err)
 		}
 		if opts.Client != nil && opts.AddRegistry && len(proj.Repositories) > 0 {
 			for _, repo := range proj.Repositories {
@@ -210,21 +220,43 @@ func ParentPOMPath(input *filesystem.ScanInput, currentPath, relativePath string
 
 // GetDependencyManagement returns managed dependencies in the specified Maven project by fetching remote pom.xml.
 func GetDependencyManagement(ctx context.Context, client *datasource.MavenRegistryAPIClient, groupID, artifactID, version maven.String) (maven.DependencyManagement, error) {
-	root := maven.Parent{ProjectKey: maven.ProjectKey{GroupID: groupID, ArtifactID: artifactID, Version: version}}
-	var result maven.Project
-	// To get dependency management from another project, we need the
-	// project with parents merged, so we call MergeParents by passing
-	// an empty project.
-	if err := MergeParents(ctx, root, &result, Options{
-		Client:             client,
-		AddRegistry:        false,
-		AllowLocal:         false,
-		InitialParentIndex: 0,
-	}); err != nil {
-		return maven.DependencyManagement{}, err
-	}
+	key := maven.ProjectKey{GroupID: groupID, ArtifactID: artifactID, Version: version}
+	return client.GetDependencyManagement(key, func() (maven.DependencyManagement, error) {
+		root := maven.Parent{ProjectKey: key}
+		var result maven.Project
+		// To get dependency management from another project, we need the
+		// project with parents merged, so we call MergeParents by passing
+		// an empty project.
+		if err := MergeParents(ctx, root, &result, Options{
+			Client:             client,
+			AddRegistry:        false,
+			AllowLocal:         false,
+			InitialParentIndex: 0,
+		}); err != nil {
+			return maven.DependencyManagement{}, err
+		}
 
-	return result.DependencyManagement, nil
+		return result.DependencyManagement, nil
+	})
+}
+
+// FinalizeDependencies dedupes the project's dependencies, imports dependency management from
+// remote BOMs, fills in managed versions, and checks that every dependency has a version.
+func FinalizeDependencies(ctx context.Context, client *datasource.MavenRegistryAPIClient, project *maven.Project) error {
+	var errs []error
+	project.ProcessDependencies(func(groupID, artifactID, version maven.String) (maven.DependencyManagement, error) {
+		dm, err := GetDependencyManagement(ctx, client, groupID, artifactID, version)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("failed to import BOM %s:%s:%s: %w", groupID, artifactID, version, err))
+		}
+		return dm, err
+	})
+	for _, d := range project.Dependencies {
+		if d.Version == "" {
+			errs = append(errs, fmt.Errorf("'dependencies.dependency.version' for %s:%s is missing", d.Name(), cmp.Or(string(d.Type), "jar")))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // CompareVersions compares two Maven semver versions with special behaviour for specific packages,
@@ -294,4 +326,72 @@ func IsPrerelease(ver *semver.Version, vk resolve.VersionKey) bool {
 		return false
 	}
 	return ver.IsPrerelease()
+}
+
+// DiscoverModules recursively discovers local modules by following module tags and adds them to client.
+func DiscoverModules(scanRoot *scalibrfs.ScanRoot, initialPaths []string, client *datasource.MavenRegistryAPIClient) {
+	visited := make(map[string]bool)
+	var queue []string
+	queue = append(queue, initialPaths...)
+
+	for len(queue) > 0 {
+		path := queue[0]
+		queue = queue[1:]
+
+		if visited[path] {
+			continue
+		}
+		visited[path] = true
+
+		f, err := scanRoot.FS.Open(path)
+		if err != nil {
+			log.Errorf("Failed to open pom.xml at %s: %v", path, err)
+			continue
+		}
+		content, err := io.ReadAll(f)
+		f.Close()
+		if err != nil {
+			log.Errorf("Failed to read pom.xml at %s: %v", path, err)
+			continue
+		}
+		var project maven.Project
+		if err := datasource.NewMavenDecoder(bytes.NewReader(content)).Decode(&project); err != nil {
+			log.Errorf("Failed to decode pom.xml at %s: %v", path, err)
+			continue
+		}
+
+		// Empty JDK and ActivationOS indicates merging the default profiles.
+		if err := project.MergeProfiles("", maven.ActivationOS{}); err != nil {
+			log.Errorf("Failed to merge profiles for pom.xml at %s: %v", path, err)
+			continue
+		}
+
+		pk := ProjectKey(project)
+		g, a, v := string(pk.GroupID), string(pk.ArtifactID), string(pk.Version)
+		if g != "" && a != "" && v != "" {
+			log.Debugf("Discovered local module %s:%s:%s at %s", g, a, v, path)
+			if client != nil {
+				client.AddLocalProject(g, a, v, content)
+			}
+		}
+
+		// Add modules to queue
+		dir := filepath.Dir(path)
+		for _, m := range project.Modules {
+			modulePath := filepath.ToSlash(filepath.Join(dir, string(m)))
+			if info, err := fs.Stat(scanRoot.FS, modulePath); err == nil && !info.IsDir() {
+				queue = append(queue, modulePath)
+			} else {
+				queue = append(queue, filepath.ToSlash(filepath.Join(modulePath, "pom.xml")))
+			}
+		}
+
+		// Add parent to queue if it exists locally
+		if project.Parent.GroupID != "" && project.Parent.ArtifactID != "" && project.Parent.Version != "" {
+			parentPath := ParentPOMPath(&filesystem.ScanInput{FS: scanRoot.FS}, path, string(project.Parent.RelativePath))
+			if parentPath != "" {
+				queue = append(queue, parentPath)
+			}
+		}
+	}
 }

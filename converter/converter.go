@@ -25,12 +25,15 @@ import (
 	cdxmeta "github.com/google/osv-scalibr/extractor/filesystem/sbom/cdx/metadata"
 	spdxmeta "github.com/google/osv-scalibr/extractor/filesystem/sbom/spdx/metadata"
 	"github.com/google/osv-scalibr/inventory"
+	"github.com/google/osv-scalibr/inventory/location"
 	"github.com/google/osv-scalibr/purl"
 	"github.com/google/uuid"
 	"github.com/spdx/tools-golang/spdx/v2/v2_3"
 )
 
 // ToPURL converts a SCALIBR package structure into a package URL.
+//
+// Deprecated: use p.PURL() directly
 func ToPURL(p *extractor.Package) *purl.PackageURL {
 	return p.PURL()
 }
@@ -53,12 +56,6 @@ func ToCDX(i inventory.Inventory, c CDXConfig) *cyclonedx.BOM {
 	bom := cyclonedx.NewBOM()
 	bom.Metadata = &cyclonedx.Metadata{
 		Timestamp: time.Now().UTC().Format("2006-01-02T15:04:05Z"),
-		Component: &cyclonedx.Component{
-			Name:    c.ComponentName,
-			Version: c.ComponentVersion,
-			Type:    cyclonedx.ComponentType(c.ComponentType),
-			BOMRef:  uuid.New().String(),
-		},
 		Tools: &cyclonedx.ToolsChoice{
 			Components: &[]cyclonedx.Component{
 				{
@@ -73,6 +70,20 @@ func ToCDX(i inventory.Inventory, c CDXConfig) *cyclonedx.BOM {
 				},
 			},
 		},
+	}
+	// the component is optional, but requires a name and type when present
+	if c.ComponentName != "" {
+		componentType := cyclonedx.ComponentType(c.ComponentType)
+		if componentType == "" {
+			componentType = cyclonedx.ComponentTypeApplication
+		}
+
+		bom.Metadata.Component = &cyclonedx.Component{
+			Name:    c.ComponentName,
+			Version: c.ComponentVersion,
+			Type:    componentType,
+			BOMRef:  uuid.New().String(),
+		}
 	}
 	if len(c.Authors) > 0 {
 		authors := make([]cyclonedx.OrganizationalContact, 0, len(c.Authors))
@@ -92,19 +103,18 @@ func ToCDX(i inventory.Inventory, c CDXConfig) *cyclonedx.BOM {
 			Name:    pkg.Name,
 			Version: pkg.Version,
 		}
-		if p := ToPURL(pkg); p != nil {
+		if p := pkg.PURL(); p != nil {
 			comp.PackageURL = p.String()
 		}
 		if cpes := extractCPEs(pkg); len(cpes) > 0 {
 			comp.CPE = cpes[0]
 		}
-		if len(pkg.Locations) > 0 {
-			occ := make([]cyclonedx.EvidenceOccurrence, 0, len((pkg.Locations)))
-			for _, loc := range pkg.Locations {
-				occ = append(occ, cyclonedx.EvidenceOccurrence{
-					Location: loc,
-				})
-			}
+		occ := []cyclonedx.EvidenceOccurrence{}
+		occ = appendOccurrenceFromLocation(pkg.Location.Descriptor, occ)
+		for _, r := range pkg.Location.Related {
+			occ = appendOccurrenceFromLocation(&r, occ)
+		}
+		if len(occ) > 0 {
 			comp.Evidence = &cyclonedx.Evidence{
 				Occurrences: &occ,
 			}
@@ -125,4 +135,13 @@ func extractCPEs(p *extractor.Package) []string {
 		return m.CPEs
 	}
 	return nil
+}
+
+func appendOccurrenceFromLocation(l *location.Location, occ []cyclonedx.EvidenceOccurrence) []cyclonedx.EvidenceOccurrence {
+	if l != nil && l.File != nil {
+		occ = append(occ, cyclonedx.EvidenceOccurrence{
+			Location: l.File.Path,
+		})
+	}
+	return occ
 }

@@ -20,6 +20,7 @@ import (
 	"context"
 	"debug/buildinfo"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"regexp"
@@ -63,6 +64,10 @@ type Extractor struct {
 	// versionFromBinary enables extracting the module version from the binary content.
 	// This operation is expensive because it uses a regexp to parse the binary content.
 	versionFromContent bool
+
+	// extractDependencyRelations enables reconstructing the inter-module dependency graph
+	// and populating ParentIDs on packages.
+	extractDependencyRelations bool
 }
 
 // New returns a Go binary extractor.
@@ -70,6 +75,7 @@ func New(cfg *cpb.PluginConfig) (filesystem.Extractor, error) {
 	e := &Extractor{maxFileSizeBytes: cfg.MaxFileSizeBytes}
 	specific := plugin.FindConfig(cfg, func(c *cpb.PluginSpecificConfig) *cpb.GoBinaryConfig { return c.GetGoBinary() })
 	e.versionFromContent = specific.GetVersionFromContent()
+	e.extractDependencyRelations = specific.GetExtractDependencyRelations()
 	return e, nil
 }
 
@@ -144,6 +150,16 @@ func (e Extractor) Extract(ctx context.Context, input *filesystem.ScanInput) (in
 		}
 		pkg = append(pkg, mainPkg)
 	}
+	if e.extractDependencyRelations {
+		edges, err := ExtractDependencyGraph(readerAt, binfo)
+		if err != nil {
+			log.Warnf("failed to extract dependency graph from Go binary (%s): %v", input.Path, err)
+		} else {
+			if err := LinkParentIDs(edges, pkg); err != nil {
+				log.Warnf("failed to link dependency graph for Go binary (%s): %v", input.Path, err)
+			}
+		}
+	}
 	e.reportFileExtracted(input.Path, input.Info, nil)
 	return inventory.Inventory{Packages: pkg}, nil
 }
@@ -183,10 +199,10 @@ func (e *Extractor) extractPackagesFromBuildInfo(binfo *buildinfo.BuildInfo, fil
 	}
 	if validatedGoVers != "" {
 		res = append(res, &extractor.Package{
-			Name:      "go",
-			Version:   validatedGoVers,
-			PURLType:  purl.TypeGolang,
-			Locations: []string{filename},
+			Name:     "go",
+			Version:  validatedGoVers,
+			PURLType: purl.TypeGolang,
+			Location: extractor.LocationFromPath(filename),
 		})
 	}
 
@@ -199,10 +215,10 @@ func (e *Extractor) extractPackagesFromBuildInfo(binfo *buildinfo.BuildInfo, fil
 		pkgVers = strings.TrimPrefix(pkgVers, "v")
 
 		pkg := &extractor.Package{
-			Name:      pkgName,
-			Version:   pkgVers,
-			PURLType:  purl.TypeGolang,
-			Locations: []string{filename},
+			Name:     pkgName,
+			Version:  pkgVers,
+			PURLType: purl.TypeGolang,
+			Location: extractor.LocationFromPath(filename),
 		}
 		res = append(res, pkg)
 	}
@@ -218,7 +234,7 @@ func validateGoVersion(vers string) (string, error) {
 	// The Go version can have multiple parts, in particular for development
 	// versions of Go. The actual Go version should be the first part (e.g.
 	// 'go1.20-pre3 +a813be86df' -> 'go1.20-pre3')
-	goVersion := strings.Split(vers, " ")[0]
+	goVersion, _, _ := strings.Cut(vers, " ")
 
 	// Strip the "go" prefix from the Go version. (e.g. go1.16.3 => 1.16.3)
 	res := strings.TrimPrefix(goVersion, "go")
@@ -242,10 +258,10 @@ func mainModule(binfo *buildinfo.BuildInfo, filename string) *extractor.Package 
 	}
 	version := strings.TrimPrefix(binfo.Main.Version, "v")
 	return &extractor.Package{
-		Name:      binfo.Main.Path,
-		Version:   version,
-		PURLType:  purl.TypeGolang,
-		Locations: []string{filename},
+		Name:     binfo.Main.Path,
+		Version:  version,
+		PURLType: purl.TypeGolang,
+		Location: extractor.LocationFromPath(filename),
 	}
 }
 
@@ -269,4 +285,35 @@ func extractVersionFromConent(reader io.Reader) string {
 
 	version = strings.TrimPrefix(version, "v")
 	return version
+}
+
+// LinkParentIDs creates parent-child dependency relationships on the target packages.
+func LinkParentIDs(edges []ModuleEdge, pkgs []*extractor.Package) error {
+	pkgsByName := make(map[string]*extractor.Package, len(pkgs))
+	for _, p := range pkgs {
+		pkgsByName[p.Name] = p
+	}
+
+	var unlinked int
+	for _, edge := range edges {
+		fromPkg := pkgsByName[edge.Module]
+		toPkg := pkgsByName[edge.DependsOn]
+		if fromPkg == nil || toPkg == nil || fromPkg == toPkg {
+			unlinked++
+			log.Debugf("unable to link dependency edge (%s -> %s): package not found in inventory", edge.Module, edge.DependsOn)
+			continue
+		}
+		parentID, err := fromPkg.RequireID()
+		if err != nil {
+			return fmt.Errorf("failed to generate ID for %s: %w", fromPkg.Name, err)
+		}
+		if toPkg.ParentIDs == nil {
+			toPkg.ParentIDs = make(map[string]bool)
+		}
+		toPkg.ParentIDs[parentID] = true
+	}
+	if unlinked > 0 {
+		log.Warnf("could not link %d dependency edge(s) out of %d: package not found in inventory", unlinked, len(edges))
+	}
+	return nil
 }

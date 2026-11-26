@@ -17,9 +17,9 @@ package javalockfile_test
 import (
 	"testing"
 
+	"deps.dev/util/maven"
 	"github.com/google/go-cmp/cmp"
 	metadata "github.com/google/osv-scalibr/extractor/filesystem/language/java/javalockfile"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/testing/protocmp"
 
 	pb "github.com/google/osv-scalibr/binary/proto/scan_result_go_proto"
@@ -40,95 +40,33 @@ var (
 	}
 )
 
-func TestSetProto(t *testing.T) {
+func TestToProto(t *testing.T) {
 	testCases := []struct {
 		desc string
 		m    *metadata.Metadata
-		p    *pb.Package
-		want *pb.Package
+		want *pb.JavaLockfileMetadata
 	}{
-		{
-			desc: "nil_metadata",
-			m:    nil,
-			p:    &pb.Package{Name: "some-package"},
-			want: &pb.Package{Name: "some-package"},
-		},
-		{
-			desc: "nil_package",
-			m:    metadataStruct1,
-			p:    nil,
-			want: nil,
-		},
 		{
 			desc: "set_metadata",
 			m:    metadataStruct1,
-			p:    &pb.Package{Name: "some-package"},
-			want: &pb.Package{
-				Name: "some-package",
-				Metadata: &pb.Package_JavaLockfileMetadata{
-					JavaLockfileMetadata: metadataProto1,
-				},
-			},
-		},
-		{
-			desc: "override_metadata",
-			m: &metadata.Metadata{
-				ArtifactID:   "another-artifact-id",
-				GroupID:      "another-group-id",
-				DepGroupVals: []string{"another-dep-group-val"},
-				IsTransitive: false,
-			},
-			p: &pb.Package{
-				Name: "some-package",
-				Metadata: &pb.Package_JavaLockfileMetadata{
-					JavaLockfileMetadata: metadataProto1,
-				},
-			},
-			want: &pb.Package{
-				Name: "some-package",
-				Metadata: &pb.Package_JavaLockfileMetadata{
-					JavaLockfileMetadata: &pb.JavaLockfileMetadata{
-						ArtifactId:   "another-artifact-id",
-						GroupId:      "another-group-id",
-						DepGroupVals: []string{"another-dep-group-val"},
-						IsTransitive: false,
-					},
-				},
-			},
-		},
-		{
-			desc: "set_all_fields",
-			m:    metadataStruct1,
-			p:    &pb.Package{Name: "some-package"},
-			want: &pb.Package{
-				Name: "some-package",
-				Metadata: &pb.Package_JavaLockfileMetadata{
-					JavaLockfileMetadata: metadataProto1,
-				},
-			},
+			want: metadataProto1,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.desc, func(t *testing.T) {
-			p := proto.Clone(tc.p).(*pb.Package)
-			tc.m.SetProto(p)
+			got := metadata.ToProto(tc.m)
 			opts := []cmp.Option{
 				protocmp.Transform(),
 			}
-			if diff := cmp.Diff(tc.want, p, opts...); diff != "" {
-				t.Errorf("Metatadata{%+v}.SetProto(%+v): (-want +got):\n%s", tc.m, tc.p, diff)
+			if diff := cmp.Diff(tc.want, got, opts...); diff != "" {
+				t.Errorf("metadata.ToProto(%+v): (-want +got):\n%s", tc.m, diff)
 			}
 
 			// Test the reverse conversion for completeness.
-
-			if tc.p == nil && tc.want == nil {
-				return
-			}
-
-			got := metadata.ToStruct(p.GetJavaLockfileMetadata())
-			if diff := cmp.Diff(tc.m, got); diff != "" {
-				t.Errorf("ToStruct(%+v): (-want +got):\n%s", p.GetJavaLockfileMetadata(), diff)
+			gotStruct := metadata.ToStruct(got)
+			if diff := cmp.Diff(tc.m, gotStruct); diff != "" {
+				t.Errorf("ToStruct(%+v): (-want +got):\n%s", got, diff)
 			}
 		})
 	}
@@ -140,11 +78,6 @@ func TestToStruct(t *testing.T) {
 		m    *pb.JavaLockfileMetadata
 		want *metadata.Metadata
 	}{
-		{
-			desc: "nil",
-			m:    nil,
-			want: nil,
-		},
 		{
 			desc: "all_fields",
 			m:    metadataProto1,
@@ -164,19 +97,196 @@ func TestToStruct(t *testing.T) {
 			}
 
 			// Test the reverse conversion for completeness.
-
-			gotP := &pb.Package{}
-			wantP := &pb.Package{
-				Metadata: &pb.Package_JavaLockfileMetadata{
-					JavaLockfileMetadata: tc.m,
-				},
-			}
-			got.SetProto(gotP)
+			gotProto := metadata.ToProto(got)
 			opts := []cmp.Option{
 				protocmp.Transform(),
 			}
-			if diff := cmp.Diff(wantP, gotP, opts...); diff != "" {
-				t.Errorf("Metatadata{%+v}.SetProto(%+v): (-want +got):\n%s", got, wantP, diff)
+			if diff := cmp.Diff(tc.m, gotProto, opts...); diff != "" {
+				t.Errorf("metadata.ToProto(%+v): (-want +got):\n%s", got, diff)
+			}
+		})
+	}
+}
+
+func TestDependenciesToProto(t *testing.T) {
+	testCases := []struct {
+		desc string
+		deps []maven.Dependency
+		want []*pb.JavaLockfileDependency
+	}{
+		{
+			desc: "empty",
+			deps: nil,
+			want: nil,
+		},
+		{
+			desc: "single",
+			deps: []maven.Dependency{
+				{
+					GroupID:    "group-id",
+					ArtifactID: "artifact-id",
+					Version:    "1.0.0",
+					Scope:      "compile",
+					Optional:   "true",
+				},
+			},
+			want: []*pb.JavaLockfileDependency{
+				{
+					GroupId:            "group-id",
+					ArtifactId:         "artifact-id",
+					VersionRequirement: "1.0.0",
+					Scope:              "compile",
+					IsOptional:         true,
+				},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
+			got := metadata.DependenciesToProto(tc.deps)
+			if diff := cmp.Diff(tc.want, got, protocmp.Transform()); diff != "" {
+				t.Errorf("DependenciesToProto(%+v): (-want +got):\n%s", tc.deps, diff)
+			}
+
+			// Test the reverse conversion for completeness.
+			gotStruct := metadata.DependenciesToStruct(got)
+			if diff := cmp.Diff(tc.deps, gotStruct); diff != "" {
+				t.Errorf("DependenciesToStruct(%+v): (-want +got):\n%s", got, diff)
+			}
+		})
+	}
+}
+
+func TestDependenciesToStruct(t *testing.T) {
+	testCases := []struct {
+		desc string
+		deps []*pb.JavaLockfileDependency
+		want []maven.Dependency
+	}{
+		{
+			desc: "empty",
+			deps: nil,
+			want: nil,
+		},
+		{
+			desc: "single",
+			deps: []*pb.JavaLockfileDependency{
+				{
+					GroupId:            "group-id",
+					ArtifactId:         "artifact-id",
+					VersionRequirement: "1.0.0",
+					Scope:              "compile",
+					IsOptional:         true,
+				},
+			},
+			want: []maven.Dependency{
+				{
+					GroupID:    "group-id",
+					ArtifactID: "artifact-id",
+					Version:    "1.0.0",
+					Scope:      "compile",
+					Optional:   "true",
+				},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
+			got := metadata.DependenciesToStruct(tc.deps)
+			if diff := cmp.Diff(tc.want, got); diff != "" {
+				t.Errorf("DependenciesToStruct(%+v): (-want +got):\n%s", tc.deps, diff)
+			}
+
+			// Test the reverse conversion for completeness.
+			gotProto := metadata.DependenciesToProto(got)
+			if diff := cmp.Diff(tc.deps, gotProto, protocmp.Transform()); diff != "" {
+				t.Errorf("DependenciesToProto(%+v): (-want +got):\n%s", got, diff)
+			}
+		})
+	}
+}
+
+func TestParentToProto(t *testing.T) {
+	testCases := []struct {
+		desc   string
+		parent *maven.ProjectKey
+		want   *pb.JavaLockfileParent
+	}{
+		{
+			desc:   "nil",
+			parent: nil,
+			want:   nil,
+		},
+		{
+			desc: "single",
+			parent: &maven.ProjectKey{
+				GroupID:    "group-id",
+				ArtifactID: "artifact-id",
+				Version:    "1.0.0",
+			},
+			want: &pb.JavaLockfileParent{
+				GroupId:    "group-id",
+				ArtifactId: "artifact-id",
+				Version:    "1.0.0",
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
+			got := metadata.ParentToProto(tc.parent)
+			if diff := cmp.Diff(tc.want, got, protocmp.Transform()); diff != "" {
+				t.Errorf("ParentToProto(%+v): (-want +got):\n%s", tc.parent, diff)
+			}
+
+			// Test the reverse conversion for completeness.
+			gotStruct := metadata.ParentToStruct(got)
+			if diff := cmp.Diff(tc.parent, gotStruct); diff != "" {
+				t.Errorf("ParentToStruct(%+v): (-want +got):\n%s", got, diff)
+			}
+		})
+	}
+}
+
+func TestParentToStruct(t *testing.T) {
+	testCases := []struct {
+		desc   string
+		parent *pb.JavaLockfileParent
+		want   *maven.ProjectKey
+	}{
+		{
+			desc:   "nil",
+			parent: nil,
+			want:   nil,
+		},
+		{
+			desc: "single",
+			parent: &pb.JavaLockfileParent{
+				GroupId:    "group-id",
+				ArtifactId: "artifact-id",
+				Version:    "1.0.0",
+			},
+			want: &maven.ProjectKey{
+				GroupID:    "group-id",
+				ArtifactID: "artifact-id",
+				Version:    "1.0.0",
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
+			got := metadata.ParentToStruct(tc.parent)
+			if diff := cmp.Diff(tc.want, got); diff != "" {
+				t.Errorf("ParentToStruct(%+v): (-want +got):\n%s", tc.parent, diff)
+			}
+
+			// Test the reverse conversion for completeness.
+			gotProto := metadata.ParentToProto(got)
+			if diff := cmp.Diff(tc.parent, gotProto, protocmp.Transform()); diff != "" {
+				t.Errorf("ParentToProto(%+v): (-want +got):\n%s", got, diff)
 			}
 		})
 	}

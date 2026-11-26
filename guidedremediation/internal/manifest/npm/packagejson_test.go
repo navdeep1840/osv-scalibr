@@ -23,10 +23,10 @@ import (
 	"deps.dev/util/resolve"
 	"deps.dev/util/resolve/dep"
 	"github.com/google/go-cmp/cmp"
-	scalibrfs "github.com/google/osv-scalibr/fs"
 	"github.com/google/osv-scalibr/guidedremediation/internal/manifest"
 	"github.com/google/osv-scalibr/guidedremediation/internal/manifest/npm"
 	"github.com/google/osv-scalibr/guidedremediation/result"
+	"github.com/google/osv-scalibr/testing/fakefs"
 )
 
 func aliasType(t *testing.T, aliasedName string) dep.Type {
@@ -108,7 +108,7 @@ func TestRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error creating ReadWriter: %v", err)
 	}
-	fsys := scalibrfs.DirFS("./testdata")
+	fsys := fakefs.DirFS(t, fakefs.CopyTestData(t, "./testdata"))
 	got, err := rw.Read("package.json", fsys)
 	if err != nil {
 		t.Fatalf("error reading manifest: %v", err)
@@ -121,6 +121,9 @@ func TestRead(t *testing.T) {
 		},
 		System: resolve.NPM,
 		Requirements: []resolve.RequirementVersion{
+			{
+				VersionKey: makeVK(t, "@scoped/pkg.name", "1.0.0", resolve.Requirement),
+			},
 			{
 				Type:       aliasType(t, "cliui"), // sorts on aliased name, not real package name
 				VersionKey: makeVK(t, "@isaacs/cliui", "^8.0.2", resolve.Requirement),
@@ -138,6 +141,9 @@ func TestRead(t *testing.T) {
 			},
 			{
 				VersionKey: makeVK(t, "lodash", "4.17.17", resolve.Requirement),
+			},
+			{
+				VersionKey: makeVK(t, "lodash.merge", "4.6.1", resolve.Requirement),
 			},
 			{
 				VersionKey: makeVK(t, "string-width", "^5.1.2", resolve.Requirement),
@@ -161,7 +167,7 @@ func TestReadWithWorkspaces(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error creating ReadWriter: %v", err)
 	}
-	fsys := scalibrfs.DirFS("./testdata/workspaces")
+	fsys := fakefs.DirFS(t, fakefs.CopyTestData(t, "./testdata/workspaces"))
 	got, err := rw.Read("package.json", fsys)
 	if err != nil {
 		t.Fatalf("error reading manifest: %v", err)
@@ -249,12 +255,45 @@ func TestReadWithWorkspaces(t *testing.T) {
 	checkManifest(t, "Manifest", got, want)
 }
 
+func TestReadDoesNotLoadWorkspaceOutsideProject(t *testing.T) {
+	dir := t.TempDir()
+	project := filepath.Join(dir, "project")
+	if err := os.Mkdir(project, 0755); err != nil {
+		t.Fatal(err)
+	}
+	data := []byte(`{"name":"root","version":"1.0.0","workspaces":["../outside"]}`)
+	if err := os.WriteFile(filepath.Join(project, "package.json"), data, 0644); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(dir, "outside")
+	if err := os.Mkdir(outside, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(outside, "package.json"), []byte(`{"name":"outside","version":"1.0.0"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	rw, err := npm.GetReadWriter()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	m, err := rw.Read("package.json", fakefs.DirFS(t, project))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, req := range m.Requirements() {
+		if req.Name == "outside:workspace" {
+			t.Fatal("Read() loaded a workspace outside the project")
+		}
+	}
+}
+
 func TestWrite(t *testing.T) {
 	rw, err := npm.GetReadWriter()
 	if err != nil {
 		t.Fatalf("error creating ReadWriter: %v", err)
 	}
-	fsys := scalibrfs.DirFS("./testdata")
+	fsys := fakefs.DirFS(t, fakefs.CopyTestData(t, "./testdata"))
 	manif, err := rw.Read("package.json", fsys)
 	if err != nil {
 		t.Fatalf("error reading manifest: %v", err)
@@ -267,6 +306,18 @@ func TestWrite(t *testing.T) {
 					Name:        "lodash",
 					VersionFrom: "4.17.17",
 					VersionTo:   "^4.17.21",
+				},
+				// Test cases for names with dots to ensure they are escaped correctly.
+				// gjson/sjson use dots as path separators, so names with dots must be escaped.
+				{
+					Name:        "lodash.merge",
+					VersionFrom: "4.6.1",
+					VersionTo:   "4.6.2",
+				},
+				{
+					Name:        "@scoped/pkg.name",
+					VersionFrom: "1.0.0",
+					VersionTo:   "1.1.0",
 				},
 				{
 					Name:        "eslint",
@@ -309,8 +360,13 @@ func TestWrite(t *testing.T) {
 	}
 	outDir := t.TempDir()
 	outFile := filepath.Join(outDir, "package.json")
+	outFS, err := os.OpenRoot(outDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer outFS.Close()
 
-	if err := rw.Write(manif, fsys, patches, outFile); err != nil {
+	if err := rw.Write(manif, fsys, patches, outFS, "package.json"); err != nil {
 		t.Fatalf("failed to write package.json: %v", err)
 	}
 

@@ -15,21 +15,40 @@
 package salesforceoauth2client_test
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/google/osv-scalibr/veles"
+	sv "github.com/google/osv-scalibr/veles/secrets/common/simplevalidate"
 	"github.com/google/osv-scalibr/veles/secrets/salesforceoauth2client"
+	"github.com/google/osv-scalibr/veles/velestest"
 )
 
 const validatorTestClientID = "3MVG123456789.AB_CDEF.ABC123456789ABC123456789ABC1"
 const validatorTestClientSecret = "123456789ABCDEFABC1234567895123456789ABCDEFABC1234567895"
 const validatorTestURL = "yuvrajapp.my.salesforce.com"
 const validatorExpectedBase64Data = "M01WRzEyMzQ1Njc4OS5BQl9DREVGLkFCQzEyMzQ1Njc4OUFCQzEyMzQ1Njc4OUFCQzE6MTIzNDU2Nzg5QUJDREVGQUJDMTIzNDU2Nzg5NTEyMzQ1Njc4OUFCQ0RFRkFCQzEyMzQ1Njc4OTU="
+
+func TestAcceptValidator(t *testing.T) {
+	velestest.AcceptValidator(
+		t,
+		salesforceoauth2client.NewValidator(),
+		velestest.WithTrueNegatives(salesforceoauth2client.Credentials{
+			ID:     validatorTestClientID,
+			Secret: validatorTestClientSecret,
+			URL:    validatorTestURL,
+		}),
+		velestest.WithoutOnline[salesforceoauth2client.Credentials](),
+		velestest.WithBrokenTransport(func(v *sv.Validator[salesforceoauth2client.Credentials]) {
+			v.HTTPC = velestest.BrokenClient
+		}),
+	)
+}
 
 // mockTransport redirects requests to the test server
 type mockTransport struct {
@@ -78,9 +97,8 @@ func TestValidator(t *testing.T) {
 		url                      string
 		serverExpectedBase64Data string
 		serverResponseCode       int
-		cancelContext            bool
 		want                     veles.ValidationStatus
-		expectError              bool
+		wantErr                  error
 	}{
 		{
 			name:                     "valid creds",
@@ -125,32 +143,13 @@ func TestValidator(t *testing.T) {
 			serverResponseCode: http.StatusUnauthorized,
 			want:               veles.ValidationInvalid,
 		},
-		{
-			name:                     "context cancelled",
-			id:                       validatorTestClientID,
-			secret:                   validatorTestClientSecret,
-			url:                      validatorTestURL,
-			serverExpectedBase64Data: validatorExpectedBase64Data,
-			serverResponseCode:       http.StatusOK,
-			cancelContext:            true,
-			want:                     veles.ValidationFailed,
-			expectError:              true,
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ctx := t.Context()
-
 			// Create mock server
 			server := mockSalesforceServer(t, tt.serverExpectedBase64Data, tt.serverResponseCode)
 			defer server.Close()
-
-			if tt.cancelContext {
-				var cancel context.CancelFunc
-				ctx, cancel = context.WithCancel(ctx)
-				cancel()
-			}
 
 			validator := salesforceoauth2client.NewValidator()
 			validator.HTTPC = &http.Client{
@@ -163,16 +162,14 @@ func TestValidator(t *testing.T) {
 				URL:    tt.url,
 			}
 
-			got, err := validator.Validate(ctx, cred)
+			got, err := validator.Validate(t.Context(), cred)
 
-			if tt.expectError && err == nil {
-				t.Fatalf("expected error, got nil")
+			if diff := cmp.Diff(tt.wantErr, err, cmpopts.EquateErrors()); diff != "" {
+				t.Errorf("Validate() error mismatch (-want +got):\n%s", diff)
 			}
-			if !tt.expectError && err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
+
 			if got != tt.want {
-				t.Fatalf("expected %v, got %v", tt.want, got)
+				t.Fatalf("Validate(): expected %v, got %v", tt.want, got)
 			}
 		})
 	}

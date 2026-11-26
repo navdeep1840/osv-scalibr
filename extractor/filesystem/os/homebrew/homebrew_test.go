@@ -26,9 +26,9 @@ import (
 	"github.com/google/osv-scalibr/extractor/filesystem/os/homebrew"
 	metadata "github.com/google/osv-scalibr/extractor/filesystem/os/homebrew/metadata"
 	"github.com/google/osv-scalibr/extractor/filesystem/simplefileapi"
-	scalibrfs "github.com/google/osv-scalibr/fs"
 	"github.com/google/osv-scalibr/inventory"
 	"github.com/google/osv-scalibr/purl"
+	"github.com/google/osv-scalibr/testing/fakefs"
 
 	cpb "github.com/google/osv-scalibr/binary/proto/config_go_proto"
 )
@@ -136,10 +136,10 @@ func TestExtract(t *testing.T) {
 			path: "testdata/Cellar/rclone/1.67.0/INSTALL_RECEIPT.json",
 			wantPackages: []*extractor.Package{
 				{
-					Name:      "rclone",
-					Version:   "1.67.0",
-					PURLType:  purl.TypeBrew,
-					Locations: []string{"testdata/Cellar/rclone/1.67.0/INSTALL_RECEIPT.json"},
+					Name:     "rclone",
+					Version:  "1.67.0",
+					PURLType: purl.TypeBrew,
+					Location: extractor.LocationFromPath("testdata/Cellar/rclone/1.67.0/INSTALL_RECEIPT.json"),
 					Metadata: &metadata.Metadata{
 						URL:  "https://github.com/rclone/rclone/archive/refs/tags/v1.67.0.tar.gz",
 						Head: "https://github.com/rclone/rclone.git",
@@ -156,10 +156,10 @@ func TestExtract(t *testing.T) {
 			path: "testdata/Caskroom/testapp/1.1.1/testapp.wrapper.sh",
 			wantPackages: []*extractor.Package{
 				{
-					Name:      "testapp",
-					Version:   "1.1.1",
-					PURLType:  purl.TypeBrew,
-					Locations: []string{"testdata/Caskroom/testapp/1.1.1/testapp.wrapper.sh"},
+					Name:     "testapp",
+					Version:  "1.1.1",
+					PURLType: purl.TypeBrew,
+					Location: extractor.LocationFromPath("testdata/Caskroom/testapp/1.1.1/testapp.wrapper.sh"),
 				},
 			},
 		},
@@ -173,10 +173,10 @@ func TestExtract(t *testing.T) {
 			path: "testdata/Caskroom/android-platform-tools/35.0.2/platform-tools/source.properties",
 			wantPackages: []*extractor.Package{
 				{
-					Name:      "android-platform-tools",
-					Version:   "35.0.2",
-					PURLType:  purl.TypeBrew,
-					Locations: []string{"testdata/Caskroom/android-platform-tools/35.0.2/platform-tools/source.properties"},
+					Name:     "android-platform-tools",
+					Version:  "35.0.2",
+					PURLType: purl.TypeBrew,
+					Location: extractor.LocationFromPath("testdata/Caskroom/android-platform-tools/35.0.2/platform-tools/source.properties"),
 				},
 			},
 		},
@@ -188,7 +188,7 @@ func TestExtract(t *testing.T) {
 			if err != nil {
 				t.Fatalf("homebrew.New: %v", err)
 			}
-			input := &filesystem.ScanInput{FS: scalibrfs.DirFS("."), Path: tt.path, Reader: nil}
+			input := &filesystem.ScanInput{FS: fakefs.DirFS(t, fakefs.CopyTestData(t, ".")), Path: tt.path, Reader: nil}
 			got, err := e.Extract(t.Context(), input)
 			if diff := cmp.Diff(tt.wantErr, err, cmpopts.EquateErrors()); diff != "" {
 				t.Errorf("Extract(%s) unexpected error (-want +got):\n%s", tt.path, diff)

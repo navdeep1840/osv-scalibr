@@ -15,7 +15,6 @@
 package gitlabpat_test
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -24,10 +23,25 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/google/osv-scalibr/veles"
+	sv "github.com/google/osv-scalibr/veles/secrets/common/simplevalidate"
 	"github.com/google/osv-scalibr/veles/secrets/gitlabpat"
+	"github.com/google/osv-scalibr/veles/velestest"
 )
 
 const validatorTestPat = "glpat-bzox79Of-KE9FD2LjoXXF4CvyxA.01.0r0l8l6ir"
+
+func TestAcceptValidator(t *testing.T) {
+	velestest.AcceptValidator(
+		t,
+		gitlabpat.NewValidator(),
+		velestest.WithTrueNegatives(gitlabpat.GitlabPAT{
+			Pat: "glpat-osvscalibr-invalid0000000000000000000000000000000000",
+		}),
+		velestest.WithBrokenTransport(func(v *sv.Validator[gitlabpat.GitlabPAT]) {
+			v.HTTPC = velestest.BrokenClient
+		}),
+	)
+}
 
 type redirectTransport struct {
 	redirectTo     string
@@ -68,7 +82,7 @@ func TestValidator(t *testing.T) {
 		pat        string
 		httpStatus int
 		want       veles.ValidationStatus
-		wantErr    bool
+		wantErr    error
 	}{
 		{
 			name:       "valid pat",
@@ -87,7 +101,7 @@ func TestValidator(t *testing.T) {
 			pat:        validatorTestPat,
 			httpStatus: http.StatusNotFound,
 			want:       veles.ValidationFailed,
-			wantErr:    true,
+			wantErr:    cmpopts.AnyError,
 		},
 		{
 			name:       "empty pat",
@@ -116,42 +130,13 @@ func TestValidator(t *testing.T) {
 			pat := gitlabpat.GitlabPAT{Pat: tc.pat}
 			got, err := v.Validate(ctx, pat)
 
-			if (err != nil) != tc.wantErr {
-				t.Fatalf("v.Validate() error = %v, wantErr %v", err, tc.wantErr)
+			if diff := cmp.Diff(tc.wantErr, err, cmpopts.EquateErrors()); diff != "" {
+				t.Errorf("Validate() error mismatch (-want +got):\n%s", diff)
 			}
 
 			if diff := cmp.Diff(tc.want, got); diff != "" {
 				t.Errorf("v.Validate() returned diff (-want +got):\n%s", diff)
 			}
 		})
-	}
-}
-func TestValidator_ContextCancellation(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
-	client := &http.Client{
-		Transport: &redirectTransport{
-			redirectTo:     server.URL,
-			hostToRedirect: "gitlab.com",
-		},
-	}
-	validator := gitlabpat.NewValidator()
-	validator.HTTPC = client
-
-	usernamePat := gitlabpat.GitlabPAT{Pat: validatorTestPat}
-
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-
-	got, err := validator.Validate(ctx, usernamePat)
-
-	if !cmp.Equal(err, context.Canceled, cmpopts.EquateErrors()) {
-		t.Errorf("Validate() error = %v, want %v", err, context.Canceled)
-	}
-	if got != veles.ValidationFailed {
-		t.Errorf("Validate() = %v, want %v", got, veles.ValidationFailed)
 	}
 }

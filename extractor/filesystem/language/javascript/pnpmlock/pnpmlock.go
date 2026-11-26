@@ -28,6 +28,7 @@ import (
 
 	"github.com/google/osv-scalibr/extractor"
 	"github.com/google/osv-scalibr/extractor/filesystem"
+	"github.com/google/osv-scalibr/extractor/filesystem/language/javascript/internal/commitextractor"
 	"github.com/google/osv-scalibr/extractor/filesystem/osv"
 	"github.com/google/osv-scalibr/inventory"
 	"github.com/google/osv-scalibr/log"
@@ -85,10 +86,10 @@ func (l *pnpmLockfile) UnmarshalYAML(unmarshal func(any) error) error {
 var (
 	numberMatcher = regexp.MustCompile(`^\d`)
 	// Looks for the pattern "name@version", where name is allowed to contain zero or more "@"
-	nameVersionRegexp = regexp.MustCompile(`^(.+)@([\w.-]+)(?:\(|$)`)
-	// A v9-style key: "name@version" or "@scope/name@version", with no leading "/"
+	nameVersionRegexp   = regexp.MustCompile(`^(.+)@([\w.-]+)(?:\(|$)`)
 	leadingNumberRegexp = regexp.MustCompile(`^\d+(\.\d+)?`)
-	v9KeyRegexp         = regexp.MustCompile(`^(@[^/@]+/)?[^/@]+@`)
+	// A v9-style key: "name@version" or "@scope/name@version", with no leading "/"
+	v9KeyRegexp = regexp.MustCompile(`^(@[^/@]+/)?[^/@]+@`)
 
 	codeLoadURLRegexp = regexp.MustCompile(`https://codeload\.github\.com(?:/[\w-.]+){2}/tar\.gz/(\w+)$`)
 )
@@ -113,6 +114,11 @@ func extractPnpmPackageNameAndVersion(dependencyPath string, lockfileVersion flo
 
 		name, version, _ := strings.Cut(dependencyPath, "@")
 
+		// v9 lockfiles don't track the version of file dependencies, so just bail
+		if strings.HasPrefix(version, "file:") {
+			return "", "", nil
+		}
+
 		if isScoped {
 			name = "@" + name
 		}
@@ -129,8 +135,17 @@ func extractPnpmPackageNameAndVersion(dependencyPath string, lockfileVersion flo
 	parts = parts[1:]
 
 	if strings.HasPrefix(parts[0], "@") {
-		name = strings.Join(parts[:2], "/")
-		parts = parts[2:]
+		// A scoped dependency path normally has the form "@scope/name",
+		// which splits into two parts. However a malformed path such as
+		// "/@scope" leaves a single "@scope" element here, so guard against
+		// slicing past the end before joining the scope and name.
+		if len(parts) < 2 {
+			name = parts[0]
+			parts = parts[1:]
+		} else {
+			name = strings.Join(parts[:2], "/")
+			parts = parts[2:]
+		}
 	} else {
 		name = parts[0]
 		parts = parts[1:]
@@ -169,7 +184,7 @@ func parseNameAtVersion(value string) (name string, version string) {
 	return matches[1], matches[2]
 }
 
-func parsePnpmLock(lockfile pnpmLockfile) ([]*extractor.Package, error) {
+func parsePnpmLock(lockfile pnpmLockfile, packageLineMap map[string]int, path string) ([]*extractor.Package, error) {
 	packages := make([]*extractor.Package, 0, len(lockfile.Packages))
 	errs := []error{}
 
@@ -207,21 +222,38 @@ func parsePnpmLock(lockfile pnpmLockfile) ([]*extractor.Package, error) {
 			}
 		}
 
+		repo := ""
+		if commit != "" {
+			if pkg.Resolution.Repo != "" {
+				repo = commitextractor.NormalizeRepo(pkg.Resolution.Repo)
+			} else if pkg.Resolution.Tarball != "" {
+				repo = commitextractor.NormalizeRepo(pkg.Resolution.Tarball)
+			}
+		}
+
+		purlType := purl.TypeNPM
+		if commit != "" {
+			purlType = purl.TypeGit
+		}
+
 		depGroups := []string{}
 		if pkg.Dev {
 			depGroups = append(depGroups, "dev")
 		}
 
+		lineNum := packageLineMap[s]
 		packages = append(packages, &extractor.Package{
 			Name:     name,
 			Version:  version,
-			PURLType: purl.TypeNPM,
+			PURLType: purlType,
 			SourceCode: &extractor.SourceCodeIdentifier{
 				Commit: commit,
+				Repo:   repo,
 			},
-			Metadata: osv.DepGroupMetadata{
+			Metadata: &osv.DepGroupMetadata{
 				DepGroupVals: depGroups,
 			},
+			Location: extractor.LocationFromPathAndLine(path, lineNum),
 		})
 	}
 
@@ -258,28 +290,74 @@ func (e Extractor) FileRequired(api filesystem.FileAPI) bool {
 
 // Extract extracts packages from a pnpm-lock.yaml file passed through the scan input.
 func (e Extractor) Extract(ctx context.Context, input *filesystem.ScanInput) (inventory.Inventory, error) {
-	// pnpm 11+ can write several YAML documents (its own install first), so read them all.
 	dec := yaml.NewDecoder(input.Reader)
-	packages := []*extractor.Package{}
+	var allPackages []*extractor.Package
 	var errs []error
+
 	for {
-		var parsedLockfile pnpmLockfile
-		if err := dec.Decode(&parsedLockfile); err != nil {
+		if err := ctx.Err(); err != nil {
+			return inventory.Inventory{Packages: allPackages}, err
+		}
+
+		var root yaml.Node
+		if err := dec.Decode(&root); err != nil {
 			if errors.Is(err, io.EOF) {
 				break
 			}
-			return inventory.Inventory{}, fmt.Errorf("could not extract: %w", err)
+			return inventory.Inventory{Packages: allPackages}, fmt.Errorf("could not extract: %w", err)
 		}
-		docPackages, err := parsePnpmLock(parsedLockfile)
-		errs = append(errs, err)
-		packages = append(packages, docPackages...)
+
+		var parsedLockfile pnpmLockfile
+		if err := root.Decode(&parsedLockfile); err != nil {
+			return inventory.Inventory{Packages: allPackages}, fmt.Errorf("could not extract: %w", err)
+		}
+
+		packageLineMap := findLineNumbers(&root)
+
+		packages, err := parsePnpmLock(parsedLockfile, packageLineMap, input.Path)
+		if err != nil {
+			errs = append(errs, err)
+		}
+		allPackages = append(allPackages, packages...)
 	}
 
-	for i := range packages {
-		packages[i].Locations = []string{input.Path}
+	if allPackages == nil {
+		allPackages = []*extractor.Package{}
 	}
 
-	return inventory.Inventory{Packages: packages}, errors.Join(errs...)
+	return inventory.Inventory{Packages: allPackages}, errors.Join(errs...)
+}
+
+// findLineNumbers goes through the Node tree to find the line numbers for each package.
+func findLineNumbers(root *yaml.Node) map[string]int {
+	results := make(map[string]int)
+	if len(root.Content) == 0 {
+		return results
+	}
+	doc := root.Content[0]
+
+	if doc.Kind != yaml.MappingNode {
+		return results // empty results
+	}
+
+	var packagesNode *yaml.Node
+	// Note: increment by 2 to iterate from key to key (skip the value).
+	for i := 0; i < len(doc.Content); i += 2 {
+		if doc.Content[i].Value == "packages" {
+			packagesNode = doc.Content[i+1]
+			break
+		}
+	}
+
+	if packagesNode == nil || packagesNode.Kind != yaml.MappingNode {
+		return results // empty results
+	}
+	// Note: increment by 2 to iterate from key to key (skip the value).
+	for i := 0; i < len(packagesNode.Content); i += 2 {
+		keyNode := packagesNode.Content[i]
+		results[keyNode.Value] = keyNode.Line
+	}
+	return results
 }
 
 var _ filesystem.Extractor = Extractor{}

@@ -24,7 +24,6 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/google/osv-scalibr/clients/clienttest"
 	"github.com/google/osv-scalibr/clients/datasource"
-	scalibrfs "github.com/google/osv-scalibr/fs"
 	"github.com/google/osv-scalibr/guidedremediation/internal/manifest"
 	"github.com/google/osv-scalibr/guidedremediation/internal/manifest/maven"
 	"github.com/google/osv-scalibr/guidedremediation/internal/remediation"
@@ -33,11 +32,12 @@ import (
 	"github.com/google/osv-scalibr/guidedremediation/options"
 	"github.com/google/osv-scalibr/guidedremediation/result"
 	"github.com/google/osv-scalibr/guidedremediation/upgrade"
+	"github.com/google/osv-scalibr/testing/fakefs"
 )
 
 func TestComputePatches(t *testing.T) {
 	client, _ := datasource.NewDefaultMavenRegistryAPIClient(t.Context(), "")
-	mavenRW, err := maven.GetReadWriter(client)
+	mavenRW, err := maven.GetReadWriter(client, "")
 	if err != nil {
 		t.Fatalf("failed getting ReadWriter: %v", err)
 	}
@@ -135,7 +135,7 @@ func TestComputePatches(t *testing.T) {
 				t.Fatalf("failed decoding wantFile: %v", err)
 			}
 
-			fsys := scalibrfs.DirFS("./testdata")
+			fsys := fakefs.DirFS(t, fakefs.CopyTestData(t, "./testdata"))
 			m, err := tt.readWriter.Read(tt.manifestPath, fsys)
 			if err != nil {
 				t.Fatalf("failed reading manifest: %v", err)

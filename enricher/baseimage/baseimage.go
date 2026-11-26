@@ -19,10 +19,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"slices"
 
-	"github.com/google/osv-scalibr/clients/depsdev/v1alpha1/grpcclient"
 	"github.com/google/osv-scalibr/enricher"
 	"github.com/google/osv-scalibr/extractor"
 	"github.com/google/osv-scalibr/inventory"
@@ -31,6 +29,10 @@ import (
 	"github.com/opencontainers/image-spec/identity"
 	"go.uber.org/multierr"
 	"golang.org/x/sync/errgroup"
+
+	agrpc "deps.dev/api/v3alpha"
+	"github.com/google/osv-scalibr/depsdev"
+	"github.com/google/osv-scalibr/plugin/config"
 )
 
 const (
@@ -45,57 +47,22 @@ const (
 	maxConcurrentRequests = 1000
 )
 
-// Config is the configuration for the base image enricher.
-type Config struct {
+// Enricher enriches inventory layer details with potential base images from deps.dev.
+type Enricher struct {
 	Client Client
 }
 
-// DefaultConfig returns the default configuration for the base image enricher.
-func DefaultConfig() *Config {
-	grpcConfig := grpcclient.DefaultConfig()
-	grpcclient, err := grpcclient.New(grpcConfig)
-	if err != nil {
-		log.Fatalf("Failed to create base image client: %v", err)
-	}
-
-	client := NewClientGRPC(grpcclient)
-
-	return &Config{
-		Client: client,
-	}
-}
-
-// Enricher enriches inventory layer details with potential base images from deps.dev.
-type Enricher struct {
-	client Client
-}
-
 // New returns a new base image enricher.
-func New(cfg *Config) (*Enricher, error) {
-	if cfg == nil {
-		return nil, errors.New("config is nil")
+func New(cfg *config.PluginConfig) (enricher.Enricher, error) {
+	if cfg == nil || cfg.ClientFactories == nil {
+		return nil, fmt.Errorf("client factories not configured for %s", Name)
 	}
-	if cfg.Client == nil {
-		return nil, errors.New("client is nil")
-	}
-	return &Enricher{client: cfg.Client}, nil
-}
-
-// NewDefault returns a new base image enricher with the default configuration.
-// It will log.Fatal if the enricher cannot be created.
-func NewDefault() enricher.Enricher {
-	e, err := New(DefaultConfig())
+	conn, err := cfg.ClientFactories.GRPCClientConn(depsdev.DepsdevAPI)
 	if err != nil {
-		log.Fatalf("Failed to create base image enricher: %v", err)
+		return nil, fmt.Errorf("failed to establish gRPC connection for %s: %w", Name, err)
 	}
-	return e
-}
-
-// Config returns the configuration for the base image enricher.
-func (e *Enricher) Config() *Config {
-	return &Config{
-		Client: e.client,
-	}
+	client := agrpc.NewInsightsClient(conn)
+	return &Enricher{Client: NewClientGRPC(client)}, nil
 }
 
 // Name of the base image enricher.
@@ -120,8 +87,8 @@ func (e *Enricher) Enrich(ctx context.Context, _ *enricher.ScanInput, inv *inven
 		return nil
 	}
 
-	// Map from chain ID to list of repositories it belongs to.
-	chainIDToBaseImage := make(map[string][]*extractor.BaseImageDetails)
+	// Map from chain ID to deduplicated repository names it belongs to.
+	chainIDToRepos := make(map[string][]string)
 	var enrichErr error
 	for _, cim := range inv.ContainerImageMetadata {
 		if cim.LayerMetadata == nil {
@@ -129,12 +96,12 @@ func (e *Enricher) Enrich(ctx context.Context, _ *enricher.ScanInput, inv *inven
 		}
 
 		// Placeholder for the scanned image itself.
-		cim.BaseImages = [][]*extractor.BaseImageDetails{
-			[]*extractor.BaseImageDetails{},
+		if len(cim.BaseImages) == 0 {
+			cim.BaseImages = [][]*extractor.BaseImageDetails{{}}
 		}
 
 		chainIDsByLayerIndex := make([]digest.Digest, len(cim.LayerMetadata))
-		baseImagesByLayerIndex := make([][]*extractor.BaseImageDetails, len(cim.LayerMetadata))
+		reposByLayerIndex := make([][]string, len(cim.LayerMetadata))
 		g, ctx := errgroup.WithContext(ctx)
 		g.SetLimit(maxConcurrentRequests)
 
@@ -143,7 +110,7 @@ func (e *Enricher) Enrich(ctx context.Context, _ *enricher.ScanInput, inv *inven
 		// do the same here.
 		for i, l := range cim.LayerMetadata {
 			diffID := l.DiffID
-			if l.DiffID == "" {
+			if diffID == "" {
 				diffID = digestSHA256EmptyTar
 			}
 
@@ -154,9 +121,9 @@ func (e *Enricher) Enrich(ctx context.Context, _ *enricher.ScanInput, inv *inven
 		identity.ChainIDs(chainIDsByLayerIndex)
 
 		for i, chainID := range chainIDsByLayerIndex {
-			if val, ok := chainIDToBaseImage[chainID.String()]; ok {
+			if repos, ok := chainIDToRepos[chainID.String()]; ok {
 				// Already cached, we can just skip this layer.
-				baseImagesByLayerIndex[i] = val
+				reposByLayerIndex[i] = repos
 				continue
 			}
 
@@ -170,7 +137,7 @@ func (e *Enricher) Enrich(ctx context.Context, _ *enricher.ScanInput, inv *inven
 				req := &Request{
 					ChainID: chainID.String(),
 				}
-				resp, err := e.client.QueryContainerImages(ctx, req)
+				resp, err := e.Client.QueryContainerImages(ctx, req)
 				if err != nil {
 					if !errors.Is(err, errNotFound) {
 						// If one query fails even with grpc retries, we cancel the rest of the
@@ -179,24 +146,16 @@ func (e *Enricher) Enrich(ctx context.Context, _ *enricher.ScanInput, inv *inven
 					}
 					return nil
 				}
-				var baseImages []*extractor.BaseImageDetails
 
-				if resp != nil && resp.Results != nil && len(resp.Results) > 0 {
+				var repos []string
+				if resp != nil {
 					for _, result := range resp.Results {
-						if result.Repository != "" {
-							baseImages = append(baseImages, &extractor.BaseImageDetails{
-								Repository: result.Repository,
-								Registry:   "docker.io", // Currently all deps.dev images are from the docker mirror.
-								ChainID:    chainID,
-								Plugin:     Name,
-							})
+						if result != nil && result.Repository != "" && !slices.Contains(repos, result.Repository) {
+							repos = append(repos, result.Repository)
 						}
 					}
 				}
-
-				// Cache and also save to layer map.
-				baseImagesByLayerIndex[i] = baseImages
-
+				reposByLayerIndex[i] = repos
 				return nil
 			})
 		}
@@ -207,40 +166,60 @@ func (e *Enricher) Enrich(ctx context.Context, _ *enricher.ScanInput, inv *inven
 			continue
 		}
 
-		// Loop backwards through the layers, from the newest to the oldest layer.
-		// This is because base images are identified by the chain ID of the newest layer in the image,
-		// so all older layer must belong to that base image.
+		for i, chainID := range chainIDsByLayerIndex {
+			chainIDToRepos[chainID.String()] = reposByLayerIndex[i]
+		}
+
+		// Pass 1: Collect base images at their topmost (newest) layer boundary, keeping
+		// pre-existing entries from earlier plugins ahead of deps.dev matches.
+		byTopLayer := make([][]*extractor.BaseImageDetails, len(cim.LayerMetadata))
+		seenExisting := make([]bool, len(cim.BaseImages))
+		var lastRepos []string
 		for i, lm := range slices.Backward(cim.LayerMetadata) {
-			baseImages := baseImagesByLayerIndex[i]
-			lm.BaseImageIndex = len(cim.BaseImages) - 1
-			chainIDToBaseImage[chainIDsByLayerIndex[i].String()] = baseImages
-
-			if len(baseImages) == 0 {
-				continue
-			}
-
-			// Is the current set of baseImages the same as the previous?
-			isSame := false
-			lastBaseImages := cim.BaseImages[len(cim.BaseImages)-1]
-			if len(baseImages) == len(lastBaseImages) {
-				isSame = true
-				for j := range baseImages {
-					if baseImages[j].Repository != lastBaseImages[j].Repository ||
-						baseImages[j].Registry != lastBaseImages[j].Registry {
-						isSame = false
-						break
-					}
+			if idx := lm.BaseImageIndex; idx > 0 && idx < len(cim.BaseImages) && !seenExisting[idx] {
+				seenExisting[idx] = true
+				for _, bid := range cim.BaseImages[idx] {
+					bid.ChainID = chainIDsByLayerIndex[i]
+					byTopLayer[i] = append(byTopLayer[i], bid)
 				}
 			}
 
-			if !isSame {
-				// Only if it's not the same base image, update
-				cim.BaseImages = append(cim.BaseImages, baseImages)
-				// And if we do update, also change the base image index to new last index.
-				lm.BaseImageIndex++
+			if repos := reposByLayerIndex[i]; len(repos) > 0 && !sameRepos(repos, lastRepos) {
+				lastRepos = repos
+				for _, repo := range repos {
+					byTopLayer[i] = append(byTopLayer[i], &extractor.BaseImageDetails{
+						Repository: repo,
+						Registry:   "docker.io", // Currently all deps.dev images are from the docker mirror.
+						ChainID:    chainIDsByLayerIndex[i],
+						Plugin:     Name,
+					})
+				}
 			}
+		}
+
+		// Pass 2: Pack per-layer boundaries back into cim.BaseImages and propagate BaseImageIndex
+		// from newest to oldest layer.
+		cim.BaseImages = [][]*extractor.BaseImageDetails{{}}
+		for i, lm := range slices.Backward(cim.LayerMetadata) {
+			if len(byTopLayer[i]) > 0 {
+				cim.BaseImages = append(cim.BaseImages, byTopLayer[i])
+			}
+			lm.BaseImageIndex = len(cim.BaseImages) - 1
 		}
 	}
 
 	return enrichErr
+}
+
+// sameRepos reports whether two deduplicated repository slices contain the same set of names.
+func sameRepos(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for _, r := range a {
+		if !slices.Contains(b, r) {
+			return false
+		}
+	}
+	return true
 }

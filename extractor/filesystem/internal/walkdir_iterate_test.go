@@ -22,12 +22,13 @@ import (
 	pathpkg "path"
 	"path/filepath"
 	"reflect"
-	"sort"
+	"slices"
 	"testing"
 	"testing/fstest"
 	"time"
 
 	scalibrfs "github.com/google/osv-scalibr/fs"
+	"github.com/google/osv-scalibr/testing/fakefs"
 )
 
 // These are the same tests as in io/fs/walk_test.go, but ignoring the order of walking.
@@ -142,7 +143,7 @@ func TestIssue51617(t *testing.T) {
 	//nolint:errcheck
 	defer os.Chmod(bad, 0700) // avoid errors on cleanup
 	var saw []string
-	err := WalkDirUnsorted(scalibrfs.DirFS(dir), ".", func(path string, d fs.DirEntry, err error) error {
+	err := WalkDirUnsorted(fakefs.DirFS(t, dir), ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return filepath.SkipDir
 		}
@@ -155,7 +156,7 @@ func TestIssue51617(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{".", "a", "a/bad", "a/next"}
-	sort.Strings(saw)
+	slices.Sort(saw)
 	if !reflect.DeepEqual(saw, want) {
 		t.Errorf("got directories %v, want %v", saw, want)
 	}

@@ -26,7 +26,6 @@ import (
 	"github.com/google/osv-scalibr/extractor/filesystem/os/nix"
 	nixmeta "github.com/google/osv-scalibr/extractor/filesystem/os/nix/metadata"
 	"github.com/google/osv-scalibr/extractor/filesystem/simplefileapi"
-	scalibrfs "github.com/google/osv-scalibr/fs"
 	"github.com/google/osv-scalibr/inventory"
 	"github.com/google/osv-scalibr/purl"
 	"github.com/google/osv-scalibr/stats"
@@ -142,7 +141,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "vicuna",
 						OSVersionID:       "24.11",
 					},
-					Locations: []string{"nix/store/xakcaxsqdzjszym0vji2r8n0wdy2inqc-perl5.38.2-FCGI-ProcManager-0.28/foo"},
+					Location: extractor.LocationFromPath("nix/store/xakcaxsqdzjszym0vji2r8n0wdy2inqc-perl5.38.2-FCGI-ProcManager-0.28/foo"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -165,7 +164,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "vicuna",
 						OSVersionID:       "24.11",
 					},
-					Locations: []string{"nix/store/q5dhwzcn82by5ndc7g0q83wsnn13qkqw-webdav-server-rs-unstable-2021-08-16/foo"},
+					Location: extractor.LocationFromPath("nix/store/q5dhwzcn82by5ndc7g0q83wsnn13qkqw-webdav-server-rs-unstable-2021-08-16/foo"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -213,7 +212,7 @@ func TestExtract(t *testing.T) {
 			createOsRelease(t, d, tt.osrelease)
 
 			input := &filesystem.ScanInput{
-				FS:     scalibrfs.DirFS(d),
+				FS:     fakefs.DirFS(t, d),
 				Path:   tt.path,
 				Reader: nil,
 				Root:   d,

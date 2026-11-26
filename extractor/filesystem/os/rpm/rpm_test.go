@@ -20,8 +20,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"runtime"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -34,7 +33,6 @@ import (
 	"github.com/google/osv-scalibr/extractor/filesystem/os/rpm"
 	rpmmeta "github.com/google/osv-scalibr/extractor/filesystem/os/rpm/metadata"
 	"github.com/google/osv-scalibr/extractor/filesystem/simplefileapi"
-	scalibrfs "github.com/google/osv-scalibr/fs"
 	"github.com/google/osv-scalibr/purl"
 	"github.com/google/osv-scalibr/stats"
 	"github.com/google/osv-scalibr/testing/fakefs"
@@ -44,11 +42,6 @@ import (
 )
 
 func TestFileRequired(t *testing.T) {
-	// supported OSes
-	if runtime.GOOS == "windows" {
-		t.Skipf("Test skipped, OS unsupported: %v", runtime.GOOS)
-	}
-
 	tests := []struct {
 		name             string
 		path             string
@@ -173,11 +166,6 @@ SUPPORT_END=2024-05-14
 VARIANT="Container Image"`
 
 func TestExtract(t *testing.T) {
-	// supported OSes
-	if runtime.GOOS == "windows" {
-		t.Skipf("Test skipped, OS unsupported: %v", runtime.GOOS)
-	}
-
 	tests := []struct {
 		name       string
 		path       string
@@ -198,10 +186,10 @@ func TestExtract(t *testing.T) {
 			wantResultMetric: stats.FileExtractedResultSuccess,
 			wantPackages: []*extractor.Package{
 				{
-					Locations: []string{"testdata/Packages.db"},
-					Name:      "aaa_base",
-					Version:   "84.87+git20180409.04c9dae-150300.10.3.1",
-					PURLType:  purl.TypeRPM,
+					Location: extractor.LocationFromPath("testdata/Packages.db"),
+					Name:     "aaa_base",
+					Version:  "84.87+git20180409.04c9dae-150300.10.3.1",
+					PURLType: purl.TypeRPM,
 					Metadata: &rpmmeta.Metadata{
 						PackageName:  "aaa_base",
 						Epoch:        0,
@@ -216,10 +204,10 @@ func TestExtract(t *testing.T) {
 					Licenses: []string{"GPL-2.0+"},
 				},
 				{
-					Locations: []string{"testdata/Packages.db"},
-					Name:      "bash",
-					Version:   "4.4-150400.25.22",
-					PURLType:  purl.TypeRPM,
+					Location: extractor.LocationFromPath("testdata/Packages.db"),
+					Name:     "bash",
+					Version:  "4.4-150400.25.22",
+					PURLType: purl.TypeRPM,
 					Metadata: &rpmmeta.Metadata{
 						PackageName:  "bash",
 						Epoch:        0,
@@ -234,10 +222,10 @@ func TestExtract(t *testing.T) {
 					Licenses: []string{"GPL-3.0-or-later"},
 				},
 				{
-					Locations: []string{"testdata/Packages.db"},
-					Name:      "bash-sh",
-					Version:   "4.4-150400.25.22",
-					PURLType:  purl.TypeRPM,
+					Location: extractor.LocationFromPath("testdata/Packages.db"),
+					Name:     "bash-sh",
+					Version:  "4.4-150400.25.22",
+					PURLType: purl.TypeRPM,
 					Metadata: &rpmmeta.Metadata{
 						PackageName:  "bash-sh",
 						Epoch:        0,
@@ -262,10 +250,10 @@ func TestExtract(t *testing.T) {
 			wantResultMetric: stats.FileExtractedResultSuccess,
 			wantPackages: []*extractor.Package{
 				{
-					Locations: []string{"testdata/Packages"},
-					Name:      "acl",
-					Version:   "2.2.51-15.el7",
-					PURLType:  purl.TypeRPM,
+					Location: extractor.LocationFromPath("testdata/Packages"),
+					Name:     "acl",
+					Version:  "2.2.51-15.el7",
+					PURLType: purl.TypeRPM,
 					Metadata: &rpmmeta.Metadata{
 						PackageName:  "acl",
 						Epoch:        0,
@@ -280,10 +268,10 @@ func TestExtract(t *testing.T) {
 					Licenses: []string{"GPLv2+"},
 				},
 				{
-					Locations: []string{"testdata/Packages"},
-					Name:      "audit-libs",
-					Version:   "2.8.5-4.el7",
-					PURLType:  purl.TypeRPM,
+					Location: extractor.LocationFromPath("testdata/Packages"),
+					Name:     "audit-libs",
+					Version:  "2.8.5-4.el7",
+					PURLType: purl.TypeRPM,
 					Metadata: &rpmmeta.Metadata{
 						PackageName:  "audit-libs",
 						Epoch:        0,
@@ -298,10 +286,10 @@ func TestExtract(t *testing.T) {
 					Licenses: []string{"LGPLv2+"},
 				},
 				{
-					Locations: []string{"testdata/Packages"},
-					Name:      "basesystem",
-					Version:   "10.0-7.el7.centos",
-					PURLType:  purl.TypeRPM,
+					Location: extractor.LocationFromPath("testdata/Packages"),
+					Name:     "basesystem",
+					Version:  "10.0-7.el7.centos",
+					PURLType: purl.TypeRPM,
 					Metadata: &rpmmeta.Metadata{
 						PackageName:  "basesystem",
 						Epoch:        0,
@@ -359,10 +347,10 @@ func TestExtract(t *testing.T) {
 			wantResultMetric: stats.FileExtractedResultSuccess,
 			wantPackages: []*extractor.Package{
 				{
-					Locations: []string{"testdata/rpmdb.sqlite"},
-					Name:      "alternatives",
-					Version:   "1.20-2.el9",
-					PURLType:  purl.TypeRPM,
+					Location: extractor.LocationFromPath("testdata/rpmdb.sqlite"),
+					Name:     "alternatives",
+					Version:  "1.20-2.el9",
+					PURLType: purl.TypeRPM,
 					Metadata: &rpmmeta.Metadata{
 						PackageName:  "alternatives",
 						Epoch:        0,
@@ -377,10 +365,10 @@ func TestExtract(t *testing.T) {
 					Licenses: []string{"GPLv2"},
 				},
 				{
-					Locations: []string{"testdata/rpmdb.sqlite"},
-					Name:      "audit-libs",
-					Version:   "3.0.7-103.el9",
-					PURLType:  purl.TypeRPM,
+					Location: extractor.LocationFromPath("testdata/rpmdb.sqlite"),
+					Name:     "audit-libs",
+					Version:  "3.0.7-103.el9",
+					PURLType: purl.TypeRPM,
 					Metadata: &rpmmeta.Metadata{
 						PackageName:  "audit-libs",
 						Epoch:        0,
@@ -395,10 +383,10 @@ func TestExtract(t *testing.T) {
 					Licenses: []string{"LGPLv2+"},
 				},
 				{
-					Locations: []string{"testdata/rpmdb.sqlite"},
-					Name:      "basesystem",
-					Version:   "11-13.el9",
-					PURLType:  purl.TypeRPM,
+					Location: extractor.LocationFromPath("testdata/rpmdb.sqlite"),
+					Name:     "basesystem",
+					Version:  "11-13.el9",
+					PURLType: purl.TypeRPM,
 					Metadata: &rpmmeta.Metadata{
 						PackageName:  "basesystem",
 						Epoch:        0,
@@ -424,10 +412,10 @@ func TestExtract(t *testing.T) {
 			wantResultMetric: stats.FileExtractedResultSuccess,
 			wantPackages: []*extractor.Package{
 				{
-					Locations: []string{"testdata/rpmdb.sqlite"},
-					Name:      "alternatives",
-					Version:   "1.20-2.el9",
-					PURLType:  purl.TypeRPM,
+					Location: extractor.LocationFromPath("testdata/rpmdb.sqlite"),
+					Name:     "alternatives",
+					Version:  "1.20-2.el9",
+					PURLType: purl.TypeRPM,
 					Metadata: &rpmmeta.Metadata{
 						PackageName:  "alternatives",
 						Epoch:        0,
@@ -440,10 +428,10 @@ func TestExtract(t *testing.T) {
 					Licenses: []string{"GPLv2"},
 				},
 				{
-					Locations: []string{"testdata/rpmdb.sqlite"},
-					Name:      "audit-libs",
-					Version:   "3.0.7-103.el9",
-					PURLType:  purl.TypeRPM,
+					Location: extractor.LocationFromPath("testdata/rpmdb.sqlite"),
+					Name:     "audit-libs",
+					Version:  "3.0.7-103.el9",
+					PURLType: purl.TypeRPM,
 					Metadata: &rpmmeta.Metadata{
 						PackageName:  "audit-libs",
 						Epoch:        0,
@@ -456,10 +444,10 @@ func TestExtract(t *testing.T) {
 					Licenses: []string{"LGPLv2+"},
 				},
 				{
-					Locations: []string{"testdata/rpmdb.sqlite"},
-					Name:      "basesystem",
-					Version:   "11-13.el9",
-					PURLType:  purl.TypeRPM,
+					Location: extractor.LocationFromPath("testdata/rpmdb.sqlite"),
+					Name:     "basesystem",
+					Version:  "11-13.el9",
+					PURLType: purl.TypeRPM,
 					Metadata: &rpmmeta.Metadata{
 						PackageName:  "basesystem",
 						Epoch:        0,
@@ -489,10 +477,10 @@ func TestExtract(t *testing.T) {
 			wantResultMetric: stats.FileExtractedResultSuccess,
 			wantPackages: []*extractor.Package{
 				{
-					Locations: []string{"testdata/Packages"},
-					Name:      "hello",
-					Version:   "0.0.1-rls",
-					PURLType:  purl.TypeRPM,
+					Location: extractor.LocationFromPath("testdata/Packages"),
+					Name:     "hello",
+					Version:  "0.0.1-rls",
+					PURLType: purl.TypeRPM,
 					Metadata: &rpmmeta.Metadata{
 						PackageName:  "hello",
 						Epoch:        1,
@@ -544,7 +532,7 @@ func TestExtract(t *testing.T) {
 			e.(*rpm.Extractor).Stats = collector
 
 			input := &filesystem.ScanInput{
-				FS:   scalibrfs.DirFS(filepath.Dir(tmpPath)),
+				FS:   fakefs.DirFS(t, filepath.Dir(tmpPath)),
 				Path: filepath.Base(tmpPath),
 				Root: filepath.Dir(tmpPath),
 				Info: info,
@@ -556,11 +544,11 @@ func TestExtract(t *testing.T) {
 
 			// Update location with the temp path.
 			for _, p := range tt.wantPackages {
-				p.Locations = []string{filepath.Base(tmpPath)}
+				p.Location = extractor.LocationFromPath(filepath.Base(tmpPath))
 			}
 
 			pkgs := got.Packages
-			sort.Slice(pkgs, func(i, j int) bool { return pkgs[i].Name < pkgs[j].Name })
+			slices.SortFunc(pkgs, func(a, b *extractor.Package) int { return strings.Compare(a.Name, b.Name) })
 			gotFirst3 := pkgs[:min(len(pkgs), 3)]
 			if diff := cmp.Diff(tt.wantPackages, gotFirst3); diff != "" {
 				t.Errorf("Extract(%s) (-want +got):\n%s", tmpPath, diff)
@@ -588,11 +576,6 @@ func TestExtract(t *testing.T) {
 }
 
 func TestExtract_VirtualFilesystem(t *testing.T) {
-	// supported OSes
-	if runtime.GOOS == "windows" {
-		t.Skipf("Test skipped, OS unsupported: %v", runtime.GOOS)
-	}
-
 	tests := []struct {
 		name       string
 		path       string
@@ -611,10 +594,10 @@ func TestExtract_VirtualFilesystem(t *testing.T) {
 			osrelease: fedora38,
 			wantPackages: []*extractor.Package{
 				{
-					Locations: []string{"testdata/Packages.db"},
-					Name:      "aaa_base",
-					Version:   "84.87+git20180409.04c9dae-150300.10.3.1",
-					PURLType:  purl.TypeRPM,
+					Location: extractor.LocationFromPath("testdata/Packages.db"),
+					Name:     "aaa_base",
+					Version:  "84.87+git20180409.04c9dae-150300.10.3.1",
+					PURLType: purl.TypeRPM,
 					Metadata: &rpmmeta.Metadata{
 						PackageName:  "aaa_base",
 						Epoch:        0,
@@ -629,10 +612,10 @@ func TestExtract_VirtualFilesystem(t *testing.T) {
 					Licenses: []string{"GPL-2.0+"},
 				},
 				{
-					Locations: []string{"testdata/Packages.db"},
-					Name:      "bash",
-					Version:   "4.4-150400.25.22",
-					PURLType:  purl.TypeRPM,
+					Location: extractor.LocationFromPath("testdata/Packages.db"),
+					Name:     "bash",
+					Version:  "4.4-150400.25.22",
+					PURLType: purl.TypeRPM,
 					Metadata: &rpmmeta.Metadata{
 						PackageName:  "bash",
 						Epoch:        0,
@@ -647,10 +630,10 @@ func TestExtract_VirtualFilesystem(t *testing.T) {
 					Licenses: []string{"GPL-3.0-or-later"},
 				},
 				{
-					Locations: []string{"testdata/Packages.db"},
-					Name:      "bash-sh",
-					Version:   "4.4-150400.25.22",
-					PURLType:  purl.TypeRPM,
+					Location: extractor.LocationFromPath("testdata/Packages.db"),
+					Name:     "bash-sh",
+					Version:  "4.4-150400.25.22",
+					PURLType: purl.TypeRPM,
 					Metadata: &rpmmeta.Metadata{
 						PackageName:  "bash-sh",
 						Epoch:        0,
@@ -674,10 +657,10 @@ func TestExtract_VirtualFilesystem(t *testing.T) {
 			osrelease: fedora38,
 			wantPackages: []*extractor.Package{
 				{
-					Locations: []string{"testdata/Packages"},
-					Name:      "acl",
-					Version:   "2.2.51-15.el7",
-					PURLType:  purl.TypeRPM,
+					Location: extractor.LocationFromPath("testdata/Packages"),
+					Name:     "acl",
+					Version:  "2.2.51-15.el7",
+					PURLType: purl.TypeRPM,
 					Metadata: &rpmmeta.Metadata{
 						PackageName:  "acl",
 						Epoch:        0,
@@ -692,10 +675,10 @@ func TestExtract_VirtualFilesystem(t *testing.T) {
 					Licenses: []string{"GPLv2+"},
 				},
 				{
-					Locations: []string{"testdata/Packages"},
-					Name:      "audit-libs",
-					Version:   "2.8.5-4.el7",
-					PURLType:  purl.TypeRPM,
+					Location: extractor.LocationFromPath("testdata/Packages"),
+					Name:     "audit-libs",
+					Version:  "2.8.5-4.el7",
+					PURLType: purl.TypeRPM,
 					Metadata: &rpmmeta.Metadata{
 						PackageName:  "audit-libs",
 						Epoch:        0,
@@ -710,10 +693,10 @@ func TestExtract_VirtualFilesystem(t *testing.T) {
 					Licenses: []string{"LGPLv2+"},
 				},
 				{
-					Locations: []string{"testdata/Packages"},
-					Name:      "basesystem",
-					Version:   "10.0-7.el7.centos",
-					PURLType:  purl.TypeRPM,
+					Location: extractor.LocationFromPath("testdata/Packages"),
+					Name:     "basesystem",
+					Version:  "10.0-7.el7.centos",
+					PURLType: purl.TypeRPM,
 					Metadata: &rpmmeta.Metadata{
 						PackageName:  "basesystem",
 						Epoch:        0,
@@ -737,10 +720,10 @@ func TestExtract_VirtualFilesystem(t *testing.T) {
 			osrelease: fedora38,
 			wantPackages: []*extractor.Package{
 				{
-					Locations: []string{"testdata/rpmdb.sqlite"},
-					Name:      "alternatives",
-					Version:   "1.20-2.el9",
-					PURLType:  purl.TypeRPM,
+					Location: extractor.LocationFromPath("testdata/rpmdb.sqlite"),
+					Name:     "alternatives",
+					Version:  "1.20-2.el9",
+					PURLType: purl.TypeRPM,
 					Metadata: &rpmmeta.Metadata{
 						PackageName:  "alternatives",
 						Epoch:        0,
@@ -755,10 +738,10 @@ func TestExtract_VirtualFilesystem(t *testing.T) {
 					Licenses: []string{"GPLv2"},
 				},
 				{
-					Locations: []string{"testdata/rpmdb.sqlite"},
-					Name:      "audit-libs",
-					Version:   "3.0.7-103.el9",
-					PURLType:  purl.TypeRPM,
+					Location: extractor.LocationFromPath("testdata/rpmdb.sqlite"),
+					Name:     "audit-libs",
+					Version:  "3.0.7-103.el9",
+					PURLType: purl.TypeRPM,
 					Metadata: &rpmmeta.Metadata{
 						PackageName:  "audit-libs",
 						Epoch:        0,
@@ -773,10 +756,10 @@ func TestExtract_VirtualFilesystem(t *testing.T) {
 					Licenses: []string{"LGPLv2+"},
 				},
 				{
-					Locations: []string{"testdata/rpmdb.sqlite"},
-					Name:      "basesystem",
-					Version:   "11-13.el9",
-					PURLType:  purl.TypeRPM,
+					Location: extractor.LocationFromPath("testdata/rpmdb.sqlite"),
+					Name:     "basesystem",
+					Version:  "11-13.el9",
+					PURLType: purl.TypeRPM,
 					Metadata: &rpmmeta.Metadata{
 						PackageName:  "basesystem",
 						Epoch:        0,
@@ -808,10 +791,10 @@ func TestExtract_VirtualFilesystem(t *testing.T) {
 
 			wantPackages: []*extractor.Package{
 				{
-					Locations: []string{"testdata/Packages_epoch"},
-					Name:      "hello",
-					Version:   "0.0.1-rls",
-					PURLType:  purl.TypeRPM,
+					Location: extractor.LocationFromPath("testdata/Packages_epoch"),
+					Name:     "hello",
+					Version:  "0.0.1-rls",
+					PURLType: purl.TypeRPM,
 					Metadata: &rpmmeta.Metadata{
 						PackageName:  "hello",
 						Epoch:        1,
@@ -868,7 +851,7 @@ func TestExtract_VirtualFilesystem(t *testing.T) {
 			}
 
 			input := &filesystem.ScanInput{
-				FS: scalibrfs.DirFS(d), Path: tt.path, Reader: r, Info: info,
+				FS: fakefs.DirFS(t, d), Path: tt.path, Reader: r, Info: info,
 			}
 
 			e, err := rpm.New(&cpb.PluginConfig{})
@@ -881,7 +864,7 @@ func TestExtract_VirtualFilesystem(t *testing.T) {
 			}
 
 			pkgs := got.Packages
-			sort.Slice(pkgs, func(i, j int) bool { return pkgs[i].Name < pkgs[j].Name })
+			slices.SortFunc(pkgs, func(a, b *extractor.Package) int { return strings.Compare(a.Name, b.Name) })
 			gotFirst3 := pkgs[:min(len(pkgs), 3)]
 			if diff := cmp.Diff(tt.wantPackages, gotFirst3); diff != "" {
 				t.Errorf("Extract(%s) (-want +got):\n%s", tt.path, diff)

@@ -15,20 +15,36 @@
 package paystacksecretkey_test
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/google/osv-scalibr/veles"
+	sv "github.com/google/osv-scalibr/veles/secrets/common/simplevalidate"
 	paystacksecretkey "github.com/google/osv-scalibr/veles/secrets/paystacksecretkey"
+	"github.com/google/osv-scalibr/veles/velestest"
 )
 
 const (
 	validatorTestSK = "sk_live_51PvZzqA"
 )
+
+func TestAcceptValidator(t *testing.T) {
+	velestest.AcceptValidator(
+		t,
+		paystacksecretkey.NewValidator(),
+		velestest.WithTrueNegatives(paystacksecretkey.PaystackSecret{
+			Key: "sk_live_osvscalibr_invalid000000000000000000000000000000000000",
+		}),
+		velestest.WithBrokenTransport(func(v *sv.Validator[paystacksecretkey.PaystackSecret]) {
+			v.HTTPC = velestest.BrokenClient
+		}),
+	)
+}
 
 // mockTransport redirects requests to the test server
 type mockTransport struct {
@@ -69,10 +85,10 @@ func mockPaystackServer(t *testing.T, expectedKey string, statusCode int) *httpt
 
 func TestValidator(t *testing.T) {
 	cases := []struct {
-		name        string
-		statusCode  int
-		want        veles.ValidationStatus
-		expectError bool
+		name       string
+		statusCode int
+		want       veles.ValidationStatus
+		wantErr    error
 	}{
 		{
 			name:       "valid_key",
@@ -85,16 +101,16 @@ func TestValidator(t *testing.T) {
 			want:       veles.ValidationInvalid,
 		},
 		{
-			name:        "server_error",
-			statusCode:  http.StatusInternalServerError,
-			want:        veles.ValidationFailed,
-			expectError: true,
+			name:       "server_error",
+			statusCode: http.StatusInternalServerError,
+			want:       veles.ValidationFailed,
+			wantErr:    cmpopts.AnyError,
 		},
 		{
-			name:        "bad_gateway",
-			statusCode:  http.StatusBadGateway,
-			want:        veles.ValidationFailed,
-			expectError: true,
+			name:       "bad_gateway",
+			statusCode: http.StatusBadGateway,
+			want:       veles.ValidationFailed,
+			wantErr:    cmpopts.AnyError,
 		},
 	}
 
@@ -113,59 +129,17 @@ func TestValidator(t *testing.T) {
 			validator := paystacksecretkey.NewValidator()
 			validator.HTTPC = client
 
-			// Create test key
 			key := paystacksecretkey.PaystackSecret{Key: validatorTestSK}
 
-			// Test validation
 			got, err := validator.Validate(t.Context(), key)
 
-			// Check error expectation
-			if tc.expectError {
-				if err == nil {
-					t.Errorf("Validate() expected error, got nil")
-				}
-			} else {
-				if err != nil {
-					t.Errorf("Validate() unexpected error: %v", err)
-				}
+			if diff := cmp.Diff(tc.wantErr, err, cmpopts.EquateErrors()); diff != "" {
+				t.Errorf("Validate() error mismatch (-want +got):\n%s", diff)
 			}
 
-			// Check validation status
 			if got != tc.want {
 				t.Errorf("Validate() = %v, want %v", got, tc.want)
 			}
 		})
-	}
-}
-
-func TestValidator_ContextCancellation(t *testing.T) {
-	// Create a server that delays response
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
-	// Create client with custom transport
-	client := &http.Client{
-		Transport: &mockTransport{testServer: server},
-	}
-
-	validator := paystacksecretkey.NewValidator()
-	validator.HTTPC = client
-
-	key := paystacksecretkey.PaystackSecret{Key: validatorTestSK}
-
-	// Create a cancelled context
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-
-	// Test validation with cancelled context
-	got, err := validator.Validate(ctx, key)
-
-	if err == nil {
-		t.Errorf("Validate() expected error due to context cancellation, got nil")
-	}
-	if got != veles.ValidationFailed {
-		t.Errorf("Validate() = %v, want %v", got, veles.ValidationFailed)
 	}
 }

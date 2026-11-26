@@ -15,50 +15,77 @@
 package hashicorpvault
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/google/osv-scalibr/veles"
+	sv "github.com/google/osv-scalibr/veles/secrets/common/simplevalidate"
+	"github.com/google/osv-scalibr/veles/velestest"
 )
+
+func TestAcceptTokenValidator(t *testing.T) {
+	velestest.AcceptValidator(
+		t,
+		NewTokenValidator("https://example.com"),
+		velestest.WithTrueNegatives(Token{Token: "token"}),
+		velestest.WithBrokenTransport(func(v *sv.Validator[Token]) {
+			v.HTTPC = velestest.BrokenClient
+		}),
+		velestest.WithoutOnline[Token](),
+	)
+}
+
+func TestAcceptAppRoleValidator(t *testing.T) {
+	velestest.AcceptValidator(
+		t,
+		NewAppRoleValidator("https://example.com"),
+		velestest.WithTrueNegatives(AppRoleCredentials{
+			RoleID:   "12345678-1234-1234-1234-123456789012",
+			SecretID: "87654321-4321-4321-4321-210987654321",
+		}),
+		velestest.WithBrokenTransport(func(v *sv.Validator[AppRoleCredentials]) {
+			v.HTTPC = velestest.BrokenClient
+		}),
+		velestest.WithoutOnline[AppRoleCredentials](),
+	)
+}
 
 func TestTokenValidator_Validate(t *testing.T) {
 	tests := []struct {
 		name           string
 		statusCode     int
 		expectedStatus veles.ValidationStatus
-		expectError    bool
+		wantErr        error
 	}{
 		{
 			name:           "valid token",
 			statusCode:     http.StatusOK,
 			expectedStatus: veles.ValidationValid,
-			expectError:    false,
 		},
 		{
 			name:           "invalid token - unauthorized",
 			statusCode:     http.StatusUnauthorized,
 			expectedStatus: veles.ValidationInvalid,
-			expectError:    false,
 		},
 		{
 			name:           "invalid token - forbidden",
 			statusCode:     http.StatusForbidden,
 			expectedStatus: veles.ValidationInvalid,
-			expectError:    false,
 		},
 		{
 			name:           "server error",
 			statusCode:     http.StatusInternalServerError,
 			expectedStatus: veles.ValidationFailed,
-			expectError:    true,
+			wantErr:        cmpopts.AnyError,
 		},
 		{
 			name:           "bad gateway",
 			statusCode:     http.StatusBadGateway,
 			expectedStatus: veles.ValidationFailed,
-			expectError:    true,
+			wantErr:        cmpopts.AnyError,
 		},
 	}
 
@@ -87,11 +114,8 @@ func TestTokenValidator_Validate(t *testing.T) {
 			token := Token{Token: "hvs.test-token"}
 			status, err := validator.Validate(t.Context(), token)
 
-			if test.expectError && err == nil {
-				t.Fatal("Expected error, got nil")
-			}
-			if !test.expectError && err != nil {
-				t.Fatalf("Unexpected error: %v", err)
+			if diff := cmp.Diff(test.wantErr, err, cmpopts.EquateErrors()); diff != "" {
+				t.Errorf("Validate() error mismatch (-want +got):\n%s", diff)
 			}
 
 			if status != test.expectedStatus {
@@ -107,7 +131,7 @@ func TestAppRoleValidator_Validate(t *testing.T) {
 		credentials    AppRoleCredentials
 		statusCode     int
 		expectedStatus veles.ValidationStatus
-		expectError    bool
+		wantErr        error
 	}{
 		{
 			name: "valid_credentials",
@@ -117,7 +141,6 @@ func TestAppRoleValidator_Validate(t *testing.T) {
 			},
 			statusCode:     http.StatusOK,
 			expectedStatus: veles.ValidationValid,
-			expectError:    false,
 		},
 		{
 			name: "invalid_credentials_-_unauthorized",
@@ -127,7 +150,6 @@ func TestAppRoleValidator_Validate(t *testing.T) {
 			},
 			statusCode:     http.StatusUnauthorized,
 			expectedStatus: veles.ValidationInvalid,
-			expectError:    false,
 		},
 		{
 			name: "invalid_credentials_-_bad_request",
@@ -137,7 +159,6 @@ func TestAppRoleValidator_Validate(t *testing.T) {
 			},
 			statusCode:     http.StatusBadRequest,
 			expectedStatus: veles.ValidationInvalid,
-			expectError:    false,
 		},
 		{
 			name: "server_error",
@@ -147,7 +168,7 @@ func TestAppRoleValidator_Validate(t *testing.T) {
 			},
 			statusCode:     http.StatusInternalServerError,
 			expectedStatus: veles.ValidationFailed,
-			expectError:    true,
+			wantErr:        cmpopts.AnyError,
 		},
 		{
 			name: "missing_role_id",
@@ -157,7 +178,7 @@ func TestAppRoleValidator_Validate(t *testing.T) {
 			},
 			statusCode:     0, // Won't make HTTP request
 			expectedStatus: veles.ValidationFailed,
-			expectError:    true,
+			wantErr:        cmpopts.AnyError,
 		},
 		{
 			name: "missing_secret_id",
@@ -167,7 +188,7 @@ func TestAppRoleValidator_Validate(t *testing.T) {
 			},
 			statusCode:     0, // Won't make HTTP request
 			expectedStatus: veles.ValidationFailed,
-			expectError:    true,
+			wantErr:        cmpopts.AnyError,
 		},
 	}
 
@@ -195,15 +216,12 @@ func TestAppRoleValidator_Validate(t *testing.T) {
 
 			status, err := validator.Validate(t.Context(), test.credentials)
 
-			if test.expectError && err == nil {
-				t.Fatal("Expected error, got nil")
-			}
-			if !test.expectError && err != nil {
-				t.Fatalf("Unexpected error: %v", err)
+			if diff := cmp.Diff(test.wantErr, err, cmpopts.EquateErrors()); diff != "" {
+				t.Errorf("Validate() error mismatch (-want +got):\n%s", diff)
 			}
 
 			if status != test.expectedStatus {
-				t.Errorf("Expected status %v, got %v", test.expectedStatus, status)
+				t.Errorf("Validate(): Expected status %v, got %v", test.expectedStatus, status)
 			}
 		})
 	}
@@ -230,31 +248,6 @@ func TestValidator_NetworkError(t *testing.T) {
 
 	if err == nil {
 		t.Fatal("Expected network error, got nil")
-	}
-	if status != veles.ValidationFailed {
-		t.Errorf("Expected ValidationFailed status, got %v", status)
-	}
-}
-
-func TestValidator_ContextCancellation(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// This handler will never respond, allowing us to test context cancellation
-		select {}
-	}))
-	defer server.Close()
-
-	serverURL := server.URL
-	validator := NewTokenValidator(serverURL)
-	validator.HTTPC = server.Client()
-
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel() // Cancel immediately
-
-	token := Token{Token: "hvs.test-token"}
-	status, err := validator.Validate(ctx, token)
-
-	if err == nil {
-		t.Fatal("Expected context cancellation error, got nil")
 	}
 	if status != veles.ValidationFailed {
 		t.Errorf("Expected ValidationFailed status, got %v", status)

@@ -387,7 +387,7 @@ func SplitNPMAlias(v string) (name, version string) {
 }
 
 // Write applies the patches to the original manifest, writing the resulting manifest file to the file path in the filesystem.
-func (r readWriter) Write(original manifest.Manifest, fsys scalibrfs.FS, patches []result.Patch, outputPath string) error {
+func (r readWriter) Write(original manifest.Manifest, fsys scalibrfs.FS, patches []result.Patch, outputRoot *os.Root, outputPath string) error {
 	// Read the whole package.json into memory so we can use sjson to write in-place.
 	f, err := fsys.Open(original.FilePath())
 	if err != nil {
@@ -414,7 +414,8 @@ func (r readWriter) Write(original manifest.Manifest, fsys scalibrfs.FS, patches
 			// Don't know what kind of dependency this is, so check them all.
 			// Check them in dev -> optional -> prod because that's the order npm seems to use when they conflict.
 			alreadyMatched := false
-			depStr := "devDependencies." + name
+			escapedName := gjson.Escape(name)
+			depStr := "devDependencies." + escapedName
 			if res := gjson.GetBytes(manif, depStr); res.Exists() {
 				ver := res.String()
 				if ver != origVer {
@@ -427,7 +428,7 @@ func (r readWriter) Write(original manifest.Manifest, fsys scalibrfs.FS, patches
 				alreadyMatched = true
 			}
 
-			depStr = "optionalDependencies." + name
+			depStr = "optionalDependencies." + escapedName
 			if res := gjson.GetBytes(manif, depStr); res.Exists() {
 				ver := res.String()
 				if ver != origVer {
@@ -444,7 +445,7 @@ func (r readWriter) Write(original manifest.Manifest, fsys scalibrfs.FS, patches
 				}
 			}
 
-			depStr = "dependencies." + name
+			depStr = "dependencies." + escapedName
 			if res := gjson.GetBytes(manif, depStr); res.Exists() {
 				ver := res.String()
 				if ver != origVer {
@@ -463,10 +464,10 @@ func (r readWriter) Write(original manifest.Manifest, fsys scalibrfs.FS, patches
 	}
 
 	// Write the patched manifest to the output path.
-	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
+	if err := outputRoot.MkdirAll(filepath.ToSlash(filepath.Dir(outputPath)), 0755); err != nil {
 		return err
 	}
-	if err := os.WriteFile(outputPath, manif, 0644); err != nil {
+	if err := outputRoot.WriteFile(filepath.ToSlash(outputPath), manif, 0644); err != nil {
 		return err
 	}
 

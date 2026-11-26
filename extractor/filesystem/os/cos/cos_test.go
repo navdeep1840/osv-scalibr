@@ -29,7 +29,6 @@ import (
 	"github.com/google/osv-scalibr/extractor/filesystem/os/cos"
 	cosmeta "github.com/google/osv-scalibr/extractor/filesystem/os/cos/metadata"
 	"github.com/google/osv-scalibr/extractor/filesystem/simplefileapi"
-	scalibrfs "github.com/google/osv-scalibr/fs"
 	"github.com/google/osv-scalibr/inventory"
 	"github.com/google/osv-scalibr/purl"
 	"github.com/google/osv-scalibr/stats"
@@ -161,10 +160,10 @@ func TestExtract(t *testing.T) {
 			osrelease: cosOSRlease,
 			wantPackages: []*extractor.Package{
 				{
-					Name:      "python-exec",
-					Version:   "17162.336.16",
-					PURLType:  purl.TypeCOS,
-					Locations: []string{"testdata/single.json"},
+					Name:     "python-exec",
+					Version:  "17162.336.16",
+					PURLType: purl.TypeCOS,
+					Location: extractor.LocationFromPath("testdata/single.json"),
 					Metadata: &cosmeta.Metadata{
 						Name:          "python-exec",
 						Version:       "17162.336.16",
@@ -183,10 +182,10 @@ func TestExtract(t *testing.T) {
 			osrelease: cosOSRlease,
 			wantPackages: []*extractor.Package{
 				{
-					Name:      "python-exec",
-					Version:   "17162.336.16",
-					PURLType:  purl.TypeCOS,
-					Locations: []string{"testdata/multiple.json"},
+					Name:     "python-exec",
+					Version:  "17162.336.16",
+					PURLType: purl.TypeCOS,
+					Location: extractor.LocationFromPath("testdata/multiple.json"),
 					Metadata: &cosmeta.Metadata{
 						Name:          "python-exec",
 						Version:       "17162.336.16",
@@ -197,10 +196,10 @@ func TestExtract(t *testing.T) {
 					},
 				},
 				{
-					Name:      "zlib",
-					Version:   "17162.336.17",
-					PURLType:  purl.TypeCOS,
-					Locations: []string{"testdata/multiple.json"},
+					Name:     "zlib",
+					Version:  "17162.336.17",
+					PURLType: purl.TypeCOS,
+					Location: extractor.LocationFromPath("testdata/multiple.json"),
 					Metadata: &cosmeta.Metadata{
 						Name:          "zlib",
 						Version:       "17162.336.17",
@@ -211,10 +210,10 @@ func TestExtract(t *testing.T) {
 					},
 				},
 				{
-					Name:      "baselayout",
-					Version:   "17162.336.18",
-					PURLType:  purl.TypeCOS,
-					Locations: []string{"testdata/multiple.json"},
+					Name:     "baselayout",
+					Version:  "17162.336.18",
+					PURLType: purl.TypeCOS,
+					Location: extractor.LocationFromPath("testdata/multiple.json"),
 					Metadata: &cosmeta.Metadata{
 						Name:          "baselayout",
 						Version:       "17162.336.18",
@@ -225,10 +224,10 @@ func TestExtract(t *testing.T) {
 					},
 				},
 				{
-					Name:      "ncurses",
-					Version:   "17162.336.19",
-					PURLType:  purl.TypeCOS,
-					Locations: []string{"testdata/multiple.json"},
+					Name:     "ncurses",
+					Version:  "17162.336.19",
+					PURLType: purl.TypeCOS,
+					Location: extractor.LocationFromPath("testdata/multiple.json"),
 					Metadata: &cosmeta.Metadata{
 						Name:          "ncurses",
 						Version:       "17162.336.19",
@@ -247,10 +246,10 @@ func TestExtract(t *testing.T) {
 			osrelease: cosOSRleaseNoVersionID,
 			wantPackages: []*extractor.Package{
 				{
-					Name:      "python-exec",
-					Version:   "17162.336.16",
-					PURLType:  purl.TypeCOS,
-					Locations: []string{"testdata/single.json"},
+					Name:     "python-exec",
+					Version:  "17162.336.16",
+					PURLType: purl.TypeCOS,
+					Location: extractor.LocationFromPath("testdata/single.json"),
 					Metadata: &cosmeta.Metadata{
 						Name:          "python-exec",
 						Version:       "17162.336.16",
@@ -267,10 +266,10 @@ func TestExtract(t *testing.T) {
 			osrelease: cosOSRleaseNoVersions,
 			wantPackages: []*extractor.Package{
 				{
-					Name:      "python-exec",
-					Version:   "17162.336.16",
-					PURLType:  purl.TypeCOS,
-					Locations: []string{"testdata/single.json"},
+					Name:     "python-exec",
+					Version:  "17162.336.16",
+					PURLType: purl.TypeCOS,
+					Location: extractor.LocationFromPath("testdata/single.json"),
 					Metadata: &cosmeta.Metadata{
 						Name:          "python-exec",
 						Version:       "17162.336.16",
@@ -311,7 +310,7 @@ func TestExtract(t *testing.T) {
 			}
 
 			input := &filesystem.ScanInput{
-				FS:     scalibrfs.DirFS(d),
+				FS:     fakefs.DirFS(t, d),
 				Path:   tt.path,
 				Reader: r,
 				Root:   d,

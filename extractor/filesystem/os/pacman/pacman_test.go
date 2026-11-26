@@ -27,7 +27,6 @@ import (
 	"github.com/google/osv-scalibr/extractor/filesystem/os/pacman"
 	pacmanmeta "github.com/google/osv-scalibr/extractor/filesystem/os/pacman/metadata"
 	"github.com/google/osv-scalibr/extractor/filesystem/simplefileapi"
-	scalibrfs "github.com/google/osv-scalibr/fs"
 	"github.com/google/osv-scalibr/inventory"
 	"github.com/google/osv-scalibr/purl"
 	"github.com/google/osv-scalibr/stats"
@@ -171,7 +170,7 @@ func TestExtract(t *testing.T) {
 						OSVersionID:         "20241201.0.284684",
 						PackageDependencies: "sh, glibc, mpfr",
 					},
-					Locations: []string{"testdata/valid"},
+					Location: extractor.LocationFromPath("testdata/valid"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -192,7 +191,7 @@ func TestExtract(t *testing.T) {
 						OSVersionID:         "20241201.0.284684",
 						PackageDependencies: "iana-etc",
 					},
-					Locations: []string{"testdata/valid_one_dep"},
+					Location: extractor.LocationFromPath("testdata/valid_one_dep"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -212,7 +211,7 @@ func TestExtract(t *testing.T) {
 						OSID:           "arch",
 						OSVersionID:    "20241201.0.284684",
 					},
-					Locations: []string{"testdata/valid_no_dep"},
+					Location: extractor.LocationFromPath("testdata/valid_no_dep"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -232,7 +231,7 @@ func TestExtract(t *testing.T) {
 						OSID:                "arch",
 						PackageDependencies: "sh, glibc, mpfr",
 					},
-					Locations: []string{"testdata/valid"},
+					Location: extractor.LocationFromPath("testdata/valid"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -250,7 +249,7 @@ func TestExtract(t *testing.T) {
 						PackageVersion:      "5.3.1-1",
 						PackageDependencies: "sh, glibc, mpfr",
 					},
-					Locations: []string{"testdata/valid"},
+					Location: extractor.LocationFromPath("testdata/valid"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -277,7 +276,7 @@ func TestExtract(t *testing.T) {
 						OSVersionID:         "20241201.0.284684",
 						PackageDependencies: "sh, glibc, mpfr",
 					},
-					Locations: []string{"testdata/eof_after_dependencies"},
+					Location: extractor.LocationFromPath("testdata/eof_after_dependencies"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -313,7 +312,7 @@ func TestExtract(t *testing.T) {
 			}
 
 			input := &filesystem.ScanInput{
-				FS: scalibrfs.DirFS(d), Path: tt.path, Reader: r, Root: d, Info: info,
+				FS: fakefs.DirFS(t, d), Path: tt.path, Reader: r, Root: d, Info: info,
 			}
 
 			got, err := e.Extract(t.Context(), input)

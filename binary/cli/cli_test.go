@@ -28,6 +28,7 @@ import (
 	"github.com/google/osv-scalibr/binary/cli"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/golang/gobinary"
 	"github.com/google/osv-scalibr/plugin"
+	"github.com/google/osv-scalibr/plugin/config"
 	"google.golang.org/protobuf/testing/protocmp"
 
 	cpb "github.com/google/osv-scalibr/binary/proto/config_go_proto"
@@ -313,6 +314,19 @@ func TestGetScanConfig_ScanRoots(t *testing.T) {
 				"windows": nil,
 			},
 		},
+		{
+			desc: "Scan root is null if remote image is provided",
+			flags: map[string]*cli.Flags{
+				"darwin":  {RemoteImage: "nginx:latest"},
+				"linux":   {RemoteImage: "nginx:latest"},
+				"windows": {RemoteImage: "nginx:latest"},
+			},
+			wantScanRoots: map[string][]string{
+				"darwin":  nil,
+				"linux":   nil,
+				"windows": nil,
+			},
+		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			wantScanRoots, ok := tc.wantScanRoots[runtime.GOOS]
@@ -580,25 +594,29 @@ func TestGetScanConfig_PluginConfig(t *testing.T) {
 	for _, tc := range []struct {
 		desc                   string
 		cfgFlags               []string
-		wantCFG                *cpb.PluginConfig
+		wantCFG                *config.PluginConfig
 		wantMaxFileSizeBytes   int64
 		wantVersionFromContent bool
 	}{
 		{
 			desc:     "single_setting_in_one_flag",
 			cfgFlags: []string{"max_file_size_bytes:1234"},
-			wantCFG: &cpb.PluginConfig{
-				MaxFileSizeBytes: 1234,
+			wantCFG: &config.PluginConfig{
+				ProtoConfig: &cpb.PluginConfig{
+					MaxFileSizeBytes: 1234,
+				},
 			},
 			wantMaxFileSizeBytes: 1234,
 		},
 		{
 			desc:     "multiple_settings_in_one_flag",
 			cfgFlags: []string{"max_file_size_bytes:1234 plugin_specific:{go_binary:{version_from_content:true}}"},
-			wantCFG: &cpb.PluginConfig{
-				MaxFileSizeBytes: 1234,
-				PluginSpecific: []*cpb.PluginSpecificConfig{
-					{Config: &cpb.PluginSpecificConfig_GoBinary{GoBinary: &cpb.GoBinaryConfig{VersionFromContent: true}}},
+			wantCFG: &config.PluginConfig{
+				ProtoConfig: &cpb.PluginConfig{
+					MaxFileSizeBytes: 1234,
+					PluginSpecific: []*cpb.PluginSpecificConfig{
+						{Config: &cpb.PluginSpecificConfig_GoBinary{GoBinary: &cpb.GoBinaryConfig{VersionFromContent: true}}},
+					},
 				},
 			},
 			wantMaxFileSizeBytes:   1234,
@@ -610,10 +628,12 @@ func TestGetScanConfig_PluginConfig(t *testing.T) {
 				"max_file_size_bytes:1234",
 				"plugin_specific:{go_binary:{version_from_content:true}}",
 			},
-			wantCFG: &cpb.PluginConfig{
-				MaxFileSizeBytes: 1234,
-				PluginSpecific: []*cpb.PluginSpecificConfig{
-					{Config: &cpb.PluginSpecificConfig_GoBinary{GoBinary: &cpb.GoBinaryConfig{VersionFromContent: true}}},
+			wantCFG: &config.PluginConfig{
+				ProtoConfig: &cpb.PluginConfig{
+					MaxFileSizeBytes: 1234,
+					PluginSpecific: []*cpb.PluginSpecificConfig{
+						{Config: &cpb.PluginSpecificConfig_GoBinary{GoBinary: &cpb.GoBinaryConfig{VersionFromContent: true}}},
+					},
 				},
 			},
 			wantMaxFileSizeBytes:   1234,
@@ -622,9 +642,11 @@ func TestGetScanConfig_PluginConfig(t *testing.T) {
 		{
 			desc:     "plugin_specific_config_short_version",
 			cfgFlags: []string{"go_binary:{version_from_content:true}"},
-			wantCFG: &cpb.PluginConfig{
-				PluginSpecific: []*cpb.PluginSpecificConfig{
-					{Config: &cpb.PluginSpecificConfig_GoBinary{GoBinary: &cpb.GoBinaryConfig{VersionFromContent: true}}},
+			wantCFG: &config.PluginConfig{
+				ProtoConfig: &cpb.PluginConfig{
+					PluginSpecific: []*cpb.PluginSpecificConfig{
+						{Config: &cpb.PluginSpecificConfig_GoBinary{GoBinary: &cpb.GoBinaryConfig{VersionFromContent: true}}},
+					},
 				},
 			},
 			wantVersionFromContent: true,
@@ -641,7 +663,7 @@ func TestGetScanConfig_PluginConfig(t *testing.T) {
 				t.Errorf("%v.GetScanConfig(): %v", flags, err)
 			}
 
-			if diff := cmp.Diff(tc.wantCFG, scanConfig.RequiredPluginConfig, protocmp.Transform()); diff != "" {
+			if diff := cmp.Diff(tc.wantCFG.ProtoConfig, scanConfig.RequiredPluginConfig.ProtoConfig, protocmp.Transform()); diff != "" {
 				t.Errorf("%v.GetScanConfig() ScanRoots got diff (-want +got):\n%s", flags, diff)
 			}
 			if len(scanConfig.Plugins) != 1 {
@@ -670,7 +692,7 @@ func TestGetScanConfig_MaxFileSize(t *testing.T) {
 	for _, tc := range []struct {
 		desc            string
 		flags           *cli.Flags
-		wantMaxFileSize int
+		wantMaxFileSize int64
 	}{
 		{
 			desc: "max file size unset",
@@ -842,6 +864,17 @@ func TestGetScanConfig_PluginGroups(t *testing.T) {
 			},
 		},
 		{
+			desc: "offline_filters_veles_validators",
+			flags: &cli.Flags{
+				PluginsToRun:         []string{"secrets/urlcredsvalidate"},
+				Offline:              true,
+				FilterByCapabilities: true,
+			},
+			dontWantPlugins: []string{
+				"secrets/urlcredsvalidate",
+			},
+		},
+		{
 			desc: "default_plugins",
 			flags: &cli.Flags{
 				PluginsToRun: []string{"default"},
@@ -943,7 +976,7 @@ func TestWriteScanResults(t *testing.T) {
 				Output: []string{"cdx-json=" + filepath.Join(testDirPath, "result.cyclonedx.json")},
 			},
 			wantFilename:      "result.cyclonedx.json",
-			wantContentPrefix: "{\n  \"$schema\": \"http://cyclonedx.org/schema/bom-1.6.schema.json\"",
+			wantContentPrefix: "{\n  \"$schema\": \"http://cyclonedx.org/schema/bom-1.7.schema.json\"",
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
@@ -1058,6 +1091,68 @@ func TestGetScanConfig_ExtractorOverride(t *testing.T) {
 				if tt.wantNumExtractors == 1 && extractors[0].Name() != tt.wantExtractorName {
 					t.Errorf("ExtractorOverride() returned extractor %q, want %q", extractors[0].Name(), tt.wantExtractorName)
 				}
+			}
+		})
+	}
+}
+
+func TestRemoteImageOptions(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		flags   *cli.Flags
+		wantLen int
+	}{
+		{
+			name:    "default_keychain_only",
+			flags:   &cli.Flags{RemoteImage: "alpine:latest"},
+			wantLen: 1,
+		},
+		{
+			name:    "with_image_platform",
+			flags:   &cli.Flags{RemoteImage: "alpine:latest", ImagePlatform: "linux/amd64"},
+			wantLen: 2,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := tc.flags.RemoteImageOptions()
+			if len(opts) != tc.wantLen {
+				t.Errorf("RemoteImageOptions() returned %d options, want %d", len(opts), tc.wantLen)
+			}
+		})
+	}
+}
+
+func TestGetCDXConfig_Authors(t *testing.T) {
+	testCases := []struct {
+		desc    string
+		authors string
+		want    []string
+	}{
+		{
+			desc:    "no_authors",
+			authors: "",
+			want:    nil,
+		},
+		{
+			desc:    "one_author",
+			authors: "author",
+			want:    []string{"author"},
+		},
+		{
+			desc:    "multiple_authors",
+			authors: "author1,author2",
+			want:    []string{"author1", "author2"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.desc, func(t *testing.T) {
+			flags := &cli.Flags{CDXAuthors: tc.authors}
+
+			got := flags.GetCDXConfig().Authors
+
+			if diff := cmp.Diff(tc.want, got); diff != "" {
+				t.Errorf("%+v.GetCDXConfig().Authors unexpected diff (-want +got):\n%s", flags, diff)
 			}
 		})
 	}

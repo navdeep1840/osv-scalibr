@@ -29,7 +29,6 @@ import (
 	"github.com/google/osv-scalibr/extractor/filesystem/os/apk"
 	apkmeta "github.com/google/osv-scalibr/extractor/filesystem/os/apk/metadata"
 	"github.com/google/osv-scalibr/extractor/filesystem/simplefileapi"
-	scalibrfs "github.com/google/osv-scalibr/fs"
 	"github.com/google/osv-scalibr/inventory"
 	"github.com/google/osv-scalibr/purl"
 	"github.com/google/osv-scalibr/stats"
@@ -270,7 +269,7 @@ func TestExtract(t *testing.T) {
 			}
 
 			input := &filesystem.ScanInput{
-				FS:     scalibrfs.DirFS(d),
+				FS:     fakefs.DirFS(t, d),
 				Path:   tt.path,
 				Reader: r,
 				Root:   d,
@@ -305,10 +304,10 @@ func TestExtract(t *testing.T) {
 
 func getPackage(path, pkgName, origin, version, osID, osVersionID, maintainer, arch, license string, commit string) *extractor.Package {
 	p := &extractor.Package{
-		Locations: []string{path},
-		Name:      pkgName,
-		Version:   version,
-		PURLType:  purl.TypeApk,
+		Location: extractor.LocationFromPath(path),
+		Name:     pkgName,
+		Version:  version,
+		PURLType: purl.TypeApk,
 		Metadata: &apkmeta.Metadata{
 			PackageName:  pkgName,
 			OriginName:   origin,

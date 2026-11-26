@@ -40,8 +40,23 @@ func TestFileRequired(t *testing.T) {
 		wantRequired bool
 	}{
 		{
-			name:         "invalid path",
+			name:         "invalid_path",
 			path:         "/tmp/var/scalibr",
+			wantRequired: false,
+		},
+		{
+			name:         "tool_versions_at_root",
+			path:         ".tool-versions",
+			wantRequired: true,
+		},
+		{
+			name:         "nested_tool_versions",
+			path:         "/tmp/project/.tool-versions",
+			wantRequired: true,
+		},
+		{
+			name:         "backup_tool_versions_not_required",
+			path:         "/tmp/project/.tool-versions.bak",
 			wantRequired: false,
 		},
 	}
@@ -78,12 +93,12 @@ func TestExtract(t *testing.T) {
 				{
 					Name:     "nodejs",
 					Version:  "24.04",
-					PURLType: purl.TypeAsdf,
+					PURLType: purl.TypeGeneric,
 					Metadata: &asdfmeta.Metadata{
 						ToolName:    "nodejs",
 						ToolVersion: "24.04",
 					},
-					Locations: []string{"testdata/simpleValid/.tool-versions"},
+					Location: extractor.LocationFromPath("testdata/simpleValid/.tool-versions"),
 				},
 			},
 		}, {
@@ -95,30 +110,30 @@ func TestExtract(t *testing.T) {
 				{
 					Name:     "nodejs",
 					Version:  "24.04",
-					PURLType: purl.TypeAsdf,
+					PURLType: purl.TypeGeneric,
 					Metadata: &asdfmeta.Metadata{
 						ToolName:    "nodejs",
 						ToolVersion: "24.04",
 					},
-					Locations: []string{"testdata/validMultiVersions/.tool-versions"},
+					Location: extractor.LocationFromPath("testdata/validMultiVersions/.tool-versions"),
 				}, {
 					Name:     "nodejs",
 					Version:  "21",
-					PURLType: purl.TypeAsdf,
+					PURLType: purl.TypeGeneric,
 					Metadata: &asdfmeta.Metadata{
 						ToolName:    "nodejs",
 						ToolVersion: "21",
 					},
-					Locations: []string{"testdata/validMultiVersions/.tool-versions"},
+					Location: extractor.LocationFromPath("testdata/validMultiVersions/.tool-versions"),
 				}, {
 					Name:     "nodejs",
 					Version:  "19.0",
-					PURLType: purl.TypeAsdf,
+					PURLType: purl.TypeGeneric,
 					Metadata: &asdfmeta.Metadata{
 						ToolName:    "nodejs",
 						ToolVersion: "19.0",
 					},
-					Locations: []string{"testdata/validMultiVersions/.tool-versions"},
+					Location: extractor.LocationFromPath("testdata/validMultiVersions/.tool-versions"),
 				},
 			},
 		}, {
@@ -130,30 +145,30 @@ func TestExtract(t *testing.T) {
 				{
 					Name:     "nodejs",
 					Version:  "24.04",
-					PURLType: purl.TypeAsdf,
+					PURLType: purl.TypeGeneric,
 					Metadata: &asdfmeta.Metadata{
 						ToolName:    "nodejs",
 						ToolVersion: "24.04",
 					},
-					Locations: []string{"testdata/validMultiVersionWithSkip/.tool-versions"},
+					Location: extractor.LocationFromPath("testdata/validMultiVersionWithSkip/.tool-versions"),
 				}, {
 					Name:     "nodejs",
 					Version:  "21",
-					PURLType: purl.TypeAsdf,
+					PURLType: purl.TypeGeneric,
 					Metadata: &asdfmeta.Metadata{
 						ToolName:    "nodejs",
 						ToolVersion: "21",
 					},
-					Locations: []string{"testdata/validMultiVersionWithSkip/.tool-versions"},
+					Location: extractor.LocationFromPath("testdata/validMultiVersionWithSkip/.tool-versions"),
 				}, {
 					Name:     "nodejs",
 					Version:  "19.0",
-					PURLType: purl.TypeAsdf,
+					PURLType: purl.TypeGeneric,
 					Metadata: &asdfmeta.Metadata{
 						ToolName:    "nodejs",
 						ToolVersion: "19.0",
 					},
-					Locations: []string{"testdata/validMultiVersionWithSkip/.tool-versions"},
+					Location: extractor.LocationFromPath("testdata/validMultiVersionWithSkip/.tool-versions"),
 				},
 			},
 		}, {
@@ -165,21 +180,21 @@ func TestExtract(t *testing.T) {
 				{
 					Name:     "nodejs",
 					Version:  "24.04",
-					PURLType: purl.TypeAsdf,
+					PURLType: purl.TypeGeneric,
 					Metadata: &asdfmeta.Metadata{
 						ToolName:    "nodejs",
 						ToolVersion: "24.04",
 					},
-					Locations: []string{"testdata/validMultiLine/.tool-versions"},
+					Location: extractor.LocationFromPath("testdata/validMultiLine/.tool-versions"),
 				}, {
 					Name:     "nodejs",
 					Version:  "20.0",
-					PURLType: purl.TypeAsdf,
+					PURLType: purl.TypeGeneric,
 					Metadata: &asdfmeta.Metadata{
 						ToolName:    "nodejs",
 						ToolVersion: "20.0",
 					},
-					Locations: []string{"testdata/validMultiLine/.tool-versions"},
+					Location: extractor.LocationFromPath("testdata/validMultiLine/.tool-versions"),
 				},
 			},
 		}, {
@@ -191,12 +206,90 @@ func TestExtract(t *testing.T) {
 				{
 					Name:     "nodejs",
 					Version:  "24.04",
-					PURLType: purl.TypeAsdf,
+					PURLType: purl.TypeGeneric,
 					Metadata: &asdfmeta.Metadata{
 						ToolName:    "nodejs",
 						ToolVersion: "24.04",
 					},
-					Locations: []string{"testdata/validWhiteSpaces/.tool-versions"},
+					Location: extractor.LocationFromPath("testdata/validWhiteSpaces/.tool-versions"),
+				},
+			},
+		},
+		{
+			name: "aliases_v_prefix_inline_comments_and_skip_specifiers",
+			inputConfigFile: extracttest.ScanInputMockConfig{
+				Path: "testdata/validAliasesAndSkips/.tool-versions",
+			},
+			wantPackages: []*extractor.Package{
+				{
+					Name:     "nodejs",
+					Version:  "20.12.2",
+					PURLType: purl.TypeGeneric,
+					Metadata: &asdfmeta.Metadata{
+						ToolName:    "node",
+						ToolVersion: "v20.12.2",
+					},
+					Location: extractor.LocationFromPath("testdata/validAliasesAndSkips/.tool-versions"),
+				},
+				{
+					Name:     "golang",
+					Version:  "1.21.9",
+					PURLType: purl.TypeGeneric,
+					Metadata: &asdfmeta.Metadata{
+						ToolName:    "go",
+						ToolVersion: "1.21.9",
+					},
+					Location: extractor.LocationFromPath("testdata/validAliasesAndSkips/.tool-versions"),
+				},
+				{
+					Name:     "golang",
+					Version:  "1.22.4",
+					PURLType: purl.TypeGeneric,
+					Metadata: &asdfmeta.Metadata{
+						ToolName:    "core:go",
+						ToolVersion: "1.22.4",
+					},
+					Location: extractor.LocationFromPath("testdata/validAliasesAndSkips/.tool-versions"),
+				},
+				{
+					Name:     "cmake",
+					Version:  "3.29.6",
+					PURLType: purl.TypeGeneric,
+					Metadata: &asdfmeta.Metadata{
+						ToolName:    "vfox:cmake",
+						ToolVersion: "3.29.6",
+					},
+					Location: extractor.LocationFromPath("testdata/validAliasesAndSkips/.tool-versions"),
+				},
+				{
+					Name:     "java",
+					Version:  "temurin-21.0.2+13.0.LTS",
+					PURLType: purl.TypeGeneric,
+					Metadata: &asdfmeta.Metadata{
+						ToolName:    "java",
+						ToolVersion: "temurin-21.0.2+13.0.LTS",
+					},
+					Location: extractor.LocationFromPath("testdata/validAliasesAndSkips/.tool-versions"),
+				},
+				{
+					Name:     "python",
+					Version:  "3.12.1",
+					PURLType: purl.TypeGeneric,
+					Metadata: &asdfmeta.Metadata{
+						ToolName:    "py",
+						ToolVersion: "3.12.1",
+					},
+					Location: extractor.LocationFromPath("testdata/validAliasesAndSkips/.tool-versions"),
+				},
+				{
+					Name:     "terraform",
+					Version:  "1.6.0",
+					PURLType: purl.TypeGeneric,
+					Metadata: &asdfmeta.Metadata{
+						ToolName:    "terraform",
+						ToolVersion: "1.6.0",
+					},
+					Location: extractor.LocationFromPath("testdata/validAliasesAndSkips/.tool-versions"),
 				},
 			},
 		},
@@ -219,7 +312,10 @@ func TestExtract(t *testing.T) {
 			scanInput := extracttest.GenerateScanInputMock(t, tt.inputConfigFile)
 			defer extracttest.CloseTestScanInput(t, scanInput)
 
-			got, _ := extr.Extract(t.Context(), &scanInput)
+			got, err := extr.Extract(t.Context(), &scanInput)
+			if err != nil {
+				t.Fatalf("%s.Extract(%q) error = %v", extr.Name(), tt.inputConfigFile.Path, err)
+			}
 
 			wantInv := inventory.Inventory{Packages: tt.wantPackages}
 			if diff := cmp.Diff(wantInv, got, cmpopts.SortSlices(extracttest.PackageCmpLess)); diff != "" {

@@ -17,6 +17,7 @@ package linuxdistro
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/osv-scalibr/detector"
@@ -25,6 +26,8 @@ import (
 	"github.com/google/osv-scalibr/inventory"
 	"github.com/google/osv-scalibr/packageindex"
 	"github.com/google/osv-scalibr/plugin"
+
+	cpb "github.com/google/osv-scalibr/binary/proto/config_go_proto"
 )
 
 const (
@@ -38,8 +41,8 @@ var now = time.Now
 type Detector struct{}
 
 // New returns a detector.
-func New() detector.Detector {
-	return &Detector{}
+func New(_ *cpb.PluginConfig) (detector.Detector, error) {
+	return &Detector{}, nil
 }
 
 // Name of the detector.
@@ -87,6 +90,9 @@ var eolDetector = map[string]func(map[string]string, scalibrfs.FS) bool{
 func (d Detector) Scan(ctx context.Context, scanRoot *scalibrfs.ScanRoot, px *packageindex.PackageIndex) (inventory.Finding, error) {
 	osRelease, err := osrelease.GetOSRelease(scanRoot.FS)
 	if err != nil {
+		if errors.Is(err, osrelease.ErrNotADistro) {
+			return inventory.Finding{}, nil
+		}
 		return inventory.Finding{}, err
 	}
 	distro, ok := osRelease["ID"]

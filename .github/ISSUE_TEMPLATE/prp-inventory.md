@@ -1,5 +1,5 @@
 ---
-name: Patch reward program - software inventory extraction
+name: Patch reward program - CURRENTLY INACTIVE
 about: Submit a software inventory extractor suggestion for the PRP
 title: 'PRP: Extractor for {software type}'
 labels: ['PRP', 'PRP:Request']
@@ -7,7 +7,13 @@ assignees: ''
 
 ---
 
+The OSV-SCALIBR Patch Rewards Program is currently paused,
+see https://github.com/google/osv-scalibr/issues/1949 for more details.
+
+---
+
 - **Software distribution method or binary type**: {e.g. `dpkg, npm, .jar files`}
+- **Popularity of distribution method** {e.g. `There are X million packages uploaded to NPM / Y million package downloads from Packagist`}
 - **Any critical, emergent vulnerability associated with software from the distribution method**: {e.g. `None`, `openssh-server affected by CVE-2024-6387`}
 - **Resources**:
   * {Any links}

@@ -45,12 +45,13 @@ import (
 
 func TestFileRequired(t *testing.T) {
 	tests := []struct {
-		name             string
-		path             string
-		fileSizeBytes    int64
-		maxFileSizeBytes int64
-		wantRequired     bool
-		wantResultMetric stats.FileRequiredResult
+		name               string
+		path               string
+		fileSizeBytes      int64
+		maxFileSizeBytes   int64
+		includeNestedRoots bool
+		wantRequired       bool
+		wantResultMetric   stats.FileRequiredResult
 	}{
 		{
 			name:             "status file",
@@ -117,13 +118,72 @@ func TestFileRequired(t *testing.T) {
 			path:         "usr/lib/opkg/status/foo",
 			wantRequired: false,
 		},
+		{
+			name:         "status_file_in_chroot_ignored_by_default",
+			path:         "chroot/var/lib/dpkg/status",
+			wantRequired: false,
+		},
+		{
+			name:         "file_in_chroot_status_d_ignored_by_default",
+			path:         "chroot/var/lib/dpkg/status.d/foo",
+			wantRequired: false,
+		},
+		{
+			name:         "opkg_status_file_in_chroot_ignored_by_default",
+			path:         "chroot/usr/lib/opkg/status",
+			wantRequired: false,
+		},
+		{
+			name:               "status_file_in_chroot_when_nested_roots_enabled",
+			path:               "chroot/var/lib/dpkg/status",
+			includeNestedRoots: true,
+			wantRequired:       true,
+			wantResultMetric:   stats.FileRequiredResultOK,
+		},
+		{
+			name:               "file_in_chroot_status_d_when_nested_roots_enabled",
+			path:               "chroot/var/lib/dpkg/status.d/foo",
+			includeNestedRoots: true,
+			wantRequired:       true,
+			wantResultMetric:   stats.FileRequiredResultOK,
+		},
+		{
+			name:               "ignore_md5sums_file_in_chroot_when_nested_roots_enabled",
+			path:               "chroot/var/lib/dpkg/status.d/foo.md5sums",
+			includeNestedRoots: true,
+			wantRequired:       false,
+		},
+		{
+			name:               "chroot_status_d_as_a_file_when_nested_roots_enabled",
+			path:               "chroot/var/lib/dpkg/status.d",
+			includeNestedRoots: true,
+			wantRequired:       false,
+		},
+		{
+			name:               "opkg_status_file_in_chroot_when_nested_roots_enabled",
+			path:               "chroot/usr/lib/opkg/status",
+			includeNestedRoots: true,
+			wantRequired:       true,
+			wantResultMetric:   stats.FileRequiredResultOK,
+		},
+		{
+			name:               "invalid_prefix_not_matching_dir_boundary_when_nested_roots_enabled",
+			path:               "myvar/lib/dpkg/status",
+			includeNestedRoots: true,
+			wantRequired:       false,
+		},
 	}
 
 	for _, tt := range tests {
 		// Note the subtest here
 		t.Run(tt.name, func(t *testing.T) {
 			collector := testcollector.New()
-			e, err := dpkg.New(&cpb.PluginConfig{MaxFileSizeBytes: tt.maxFileSizeBytes})
+			e, err := dpkg.New(&cpb.PluginConfig{
+				MaxFileSizeBytes: tt.maxFileSizeBytes,
+				PluginSpecific: []*cpb.PluginSpecificConfig{
+					{Config: &cpb.PluginSpecificConfig_Dpkg{Dpkg: &cpb.DpkgConfig{IncludeNestedRoots: tt.includeNestedRoots}}},
+				},
+			})
 			if err != nil {
 				t.Fatalf("dpkg.New: %v", err)
 			}
@@ -199,7 +259,7 @@ func TestExtract(t *testing.T) {
 						Maintainer:        "Debian freedesktop.org maintainers <pkg-freedesktop-maintainers@lists.alioth.debian.org>",
 						Architecture:      "amd64",
 					},
-					Locations: []string{"var/lib/dpkg/status"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status"),
 				},
 				{
 					Name:     "acl",
@@ -215,7 +275,7 @@ func TestExtract(t *testing.T) {
 						Maintainer:        "Guillem Jover <guillem@debian.org>",
 						Architecture:      "amd64",
 					},
-					Locations: []string{"var/lib/dpkg/status"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status"),
 				},
 				{
 					Name:     "adduser",
@@ -231,7 +291,7 @@ func TestExtract(t *testing.T) {
 						Maintainer:        "Debian Adduser Developers <adduser@packages.debian.org>",
 						Architecture:      "all",
 					},
-					Locations: []string{"var/lib/dpkg/status"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status"),
 				},
 				{
 					Name:     "admin-session",
@@ -247,7 +307,7 @@ func TestExtract(t *testing.T) {
 						Maintainer:        "nobody@google.com",
 						Architecture:      "amd64",
 					},
-					Locations: []string{"var/lib/dpkg/status"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status"),
 				},
 				{
 					Name:     "attr",
@@ -263,7 +323,7 @@ func TestExtract(t *testing.T) {
 						Maintainer:        "Guillem Jover <guillem@debian.org>",
 						Architecture:      "amd64",
 					},
-					Locations: []string{"var/lib/dpkg/status"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status"),
 				},
 				// Expect source name.
 				{
@@ -281,7 +341,7 @@ func TestExtract(t *testing.T) {
 						Maintainer:        "Guillem Jover <guillem@debian.org>",
 						Architecture:      "amd64",
 					},
-					Locations: []string{"var/lib/dpkg/status"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status"),
 				},
 				// Expect source name and version.
 				{
@@ -300,7 +360,7 @@ func TestExtract(t *testing.T) {
 						Maintainer:        "util-linux packagers <util-linux@packages.debian.org>",
 						Architecture:      "amd64",
 					},
-					Locations: []string{"var/lib/dpkg/status"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -322,7 +382,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "bookworm",
 						OSVersionID:       "12",
 					},
-					Locations: []string{"var/lib/dpkg/status"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status"),
 				},
 				{
 					Name:     "bar",
@@ -336,7 +396,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "bookworm",
 						OSVersionID:       "12",
 					},
-					Locations: []string{"var/lib/dpkg/status"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -359,7 +419,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "bookworm",
 						OSVersionID:       "12",
 					},
-					Locations: []string{"var/lib/dpkg/status"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status"),
 				},
 				{
 					Name:     "bar",
@@ -373,7 +433,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "bookworm",
 						OSVersionID:       "12",
 					},
-					Locations: []string{"var/lib/dpkg/status"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -396,7 +456,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "bookworm",
 						OSVersionID:       "12",
 					},
-					Locations: []string{"var/lib/dpkg/status"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status"),
 				},
 				{
 					Name:     "wantdeinstall_installed",
@@ -410,7 +470,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "bookworm",
 						OSVersionID:       "12",
 					},
-					Locations: []string{"var/lib/dpkg/status"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status"),
 				},
 				{
 					Name:     "wantpurge_installed",
@@ -424,7 +484,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "bookworm",
 						OSVersionID:       "12",
 					},
-					Locations: []string{"var/lib/dpkg/status"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -458,7 +518,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "bookworm",
 						OSVersionID:       "12",
 					},
-					Locations: []string{"var/lib/dpkg/status"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status"),
 				},
 				{
 					Name:     "wantdeinstall_installed",
@@ -472,7 +532,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "bookworm",
 						OSVersionID:       "12",
 					},
-					Locations: []string{"var/lib/dpkg/status"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status"),
 				},
 				{
 					Name:     "wantdeinstall_configfiles",
@@ -486,7 +546,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "bookworm",
 						OSVersionID:       "12",
 					},
-					Locations: []string{"var/lib/dpkg/status"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status"),
 				},
 				{
 					Name:     "wantinstall_unpacked",
@@ -500,7 +560,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "bookworm",
 						OSVersionID:       "12",
 					},
-					Locations: []string{"var/lib/dpkg/status"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status"),
 				},
 				{
 					Name:     "wantpurge_installed",
@@ -514,7 +574,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "bookworm",
 						OSVersionID:       "12",
 					},
-					Locations: []string{"var/lib/dpkg/status"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status"),
 				},
 				{
 					Name:     "wantinstall_halfinstalled",
@@ -528,7 +588,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "bookworm",
 						OSVersionID:       "12",
 					},
-					Locations: []string{"var/lib/dpkg/status"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status"),
 				},
 				{
 					Name:     "wantnostatus",
@@ -541,7 +601,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "bookworm",
 						OSVersionID:       "12",
 					},
-					Locations: []string{"var/lib/dpkg/status"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -580,7 +640,7 @@ func TestExtract(t *testing.T) {
 						Maintainer:     "Guillem Jover <guillem@debian.org>",
 						Architecture:   "amd64",
 					},
-					Locations: []string{"var/lib/dpkg/status"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -602,7 +662,7 @@ func TestExtract(t *testing.T) {
 						Maintainer:     "Guillem Jover <guillem@debian.org>",
 						Architecture:   "amd64",
 					},
-					Locations: []string{"var/lib/dpkg/status"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -624,7 +684,7 @@ func TestExtract(t *testing.T) {
 						Maintainer:        "Guillem Jover <guillem@debian.org>",
 						Architecture:      "amd64",
 					},
-					Locations: []string{"var/lib/dpkg/status"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -651,7 +711,7 @@ func TestExtract(t *testing.T) {
 						Maintainer:        "Guillem Jover <guillem@debian.org>",
 						Architecture:      "amd64",
 					},
-					Locations: []string{"var/lib/dpkg/status"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -678,7 +738,7 @@ func TestExtract(t *testing.T) {
 						Maintainer:        "Guillem Jover <guillem@debian.org>",
 						Architecture:      "amd64",
 					},
-					Locations: []string{"var/lib/dpkg/status"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -703,7 +763,7 @@ func TestExtract(t *testing.T) {
 						Maintainer:        "someone",
 						Architecture:      "amd64",
 					},
-					Locations: []string{"var/lib/dpkg/status.d/foo"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status.d/foo"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -736,7 +796,7 @@ func TestExtract(t *testing.T) {
 						Maintainer:        "Maintainers of Mozilla-related packages <team+pkg-mozilla@tracker.debian.org>",
 						Architecture:      "all",
 					},
-					Locations: []string{"var/lib/dpkg/status"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status"),
 					ExploitabilitySignals: []*vex.PackageExploitabilitySignal{&vex.PackageExploitabilitySignal{
 						Plugin:          dpkg.Name,
 						Justification:   vex.ComponentNotPresent,
@@ -766,7 +826,7 @@ func TestExtract(t *testing.T) {
 						Maintainer:        "Gerrit Pape <pape@smarden.org>",
 						Architecture:      "all",
 					},
-					Locations: []string{"var/lib/dpkg/status"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status"),
 					ExploitabilitySignals: []*vex.PackageExploitabilitySignal{&vex.PackageExploitabilitySignal{
 						Plugin:          dpkg.Name,
 						Justification:   vex.ComponentNotPresent,
@@ -796,7 +856,7 @@ func TestExtract(t *testing.T) {
 						Maintainer:        "Lorenzo Puliti <plorenzo@disroot.org>",
 						Architecture:      "all",
 					},
-					Locations: []string{"var/lib/dpkg/status"},
+					Location: extractor.LocationFromPath("var/lib/dpkg/status"),
 					ExploitabilitySignals: []*vex.PackageExploitabilitySignal{&vex.PackageExploitabilitySignal{
 						Plugin:          dpkg.Name,
 						Justification:   vex.ComponentNotPresent,
@@ -825,7 +885,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "openwrt-21.02.1",
 						OSVersionID:       "21.02.1",
 					},
-					Locations: []string{"usr/lib/opkg/status"},
+					Location: extractor.LocationFromPath("usr/lib/opkg/status"),
 				},
 				{
 					Name:     "libuci20130104",
@@ -840,7 +900,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "openwrt-21.02.1",
 						OSVersionID:       "21.02.1",
 					},
-					Locations: []string{"usr/lib/opkg/status"},
+					Location: extractor.LocationFromPath("usr/lib/opkg/status"),
 				},
 				{
 					Name:     "busybox",
@@ -855,7 +915,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "openwrt-21.02.1",
 						OSVersionID:       "21.02.1",
 					},
-					Locations: []string{"usr/lib/opkg/status"},
+					Location: extractor.LocationFromPath("usr/lib/opkg/status"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -879,7 +939,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "openwrt-21.02.1",
 						OSVersionID:       "21.02.1",
 					},
-					Locations: []string{"usr/lib/opkg/status"},
+					Location: extractor.LocationFromPath("usr/lib/opkg/status"),
 				},
 				{
 					Name:     "busybox",
@@ -894,7 +954,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "openwrt-21.02.1",
 						OSVersionID:       "21.02.1",
 					},
-					Locations: []string{"usr/lib/opkg/status"},
+					Location: extractor.LocationFromPath("usr/lib/opkg/status"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -919,7 +979,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "openwrt-21.02.1",
 						OSVersionID:       "21.02.1",
 					},
-					Locations: []string{"usr/lib/opkg/status"},
+					Location: extractor.LocationFromPath("usr/lib/opkg/status"),
 				},
 				{
 					Name:     "busybox",
@@ -934,7 +994,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "openwrt-21.02.1",
 						OSVersionID:       "21.02.1",
 					},
-					Locations: []string{"usr/lib/opkg/status"},
+					Location: extractor.LocationFromPath("usr/lib/opkg/status"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -958,7 +1018,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "openwrt-21.02.1",
 						OSVersionID:       "21.02.1",
 					},
-					Locations: []string{"usr/lib/opkg/status"},
+					Location: extractor.LocationFromPath("usr/lib/opkg/status"),
 				},
 				{
 					Name:     "wantpurge_installed",
@@ -972,7 +1032,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "openwrt-21.02.1",
 						OSVersionID:       "21.02.1",
 					},
-					Locations: []string{"usr/lib/opkg/status"},
+					Location: extractor.LocationFromPath("usr/lib/opkg/status"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -1007,7 +1067,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "openwrt-21.02.1",
 						OSVersionID:       "21.02.1",
 					},
-					Locations: []string{"usr/lib/opkg/status"},
+					Location: extractor.LocationFromPath("usr/lib/opkg/status"),
 				},
 				{
 					Name:     "wantdeinstall_configfiles",
@@ -1021,7 +1081,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "openwrt-21.02.1",
 						OSVersionID:       "21.02.1",
 					},
-					Locations: []string{"usr/lib/opkg/status"},
+					Location: extractor.LocationFromPath("usr/lib/opkg/status"),
 				},
 				{
 					Name:     "wantinstall_unpacked",
@@ -1035,7 +1095,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "openwrt-21.02.1",
 						OSVersionID:       "21.02.1",
 					},
-					Locations: []string{"usr/lib/opkg/status"},
+					Location: extractor.LocationFromPath("usr/lib/opkg/status"),
 				},
 				{
 					Name:     "wantpurge_installed",
@@ -1049,7 +1109,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "openwrt-21.02.1",
 						OSVersionID:       "21.02.1",
 					},
-					Locations: []string{"usr/lib/opkg/status"},
+					Location: extractor.LocationFromPath("usr/lib/opkg/status"),
 				},
 				{
 					Name:     "wantpurge_notinstalled",
@@ -1063,7 +1123,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "openwrt-21.02.1",
 						OSVersionID:       "21.02.1",
 					},
-					Locations: []string{"usr/lib/opkg/status"},
+					Location: extractor.LocationFromPath("usr/lib/opkg/status"),
 				},
 				{
 					Name:     "wantnostatus",
@@ -1076,7 +1136,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "openwrt-21.02.1",
 						OSVersionID:       "21.02.1",
 					},
-					Locations: []string{"usr/lib/opkg/status"},
+					Location: extractor.LocationFromPath("usr/lib/opkg/status"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -1117,7 +1177,7 @@ func TestExtract(t *testing.T) {
 						OSID:           "openwrt",
 						OSVersionID:    "21.02.1",
 					},
-					Locations: []string{"usr/lib/opkg/status"},
+					Location: extractor.LocationFromPath("usr/lib/opkg/status"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -1139,7 +1199,7 @@ func TestExtract(t *testing.T) {
 						Architecture:   "x86_64",
 						OSID:           "openwrt",
 					},
-					Locations: []string{"usr/lib/opkg/status"},
+					Location: extractor.LocationFromPath("usr/lib/opkg/status"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -1161,7 +1221,7 @@ func TestExtract(t *testing.T) {
 						Architecture:      "x86_64",
 						OSVersionCodename: "openwrt-21.02.1",
 					},
-					Locations: []string{"usr/lib/opkg/status"},
+					Location: extractor.LocationFromPath("usr/lib/opkg/status"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -1185,7 +1245,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "openwrt-21.02.1",
 						OSVersionID:       "21.02.1",
 					},
-					Locations: []string{"usr/lib/opkg/status"},
+					Location: extractor.LocationFromPath("usr/lib/opkg/status"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -1211,7 +1271,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "openwrt-21.02.1",
 						OSVersionID:       "21.02.1",
 					},
-					Locations: []string{"usr/lib/opkg/status"},
+					Location: extractor.LocationFromPath("usr/lib/opkg/status"),
 					ExploitabilitySignals: []*vex.PackageExploitabilitySignal{&vex.PackageExploitabilitySignal{
 						Plugin:          dpkg.Name,
 						Justification:   vex.ComponentNotPresent,
@@ -1259,7 +1319,7 @@ func TestExtract(t *testing.T) {
 				tt.path = "var/lib/dpkg/status"
 			}
 			input := &filesystem.ScanInput{
-				FS: scalibrfs.DirFS(d), Path: tt.path, Reader: r, Root: d, Info: info,
+				FS: fakefs.DirFS(t, d), Path: tt.path, Reader: r, Root: d, Info: info,
 			}
 
 			cfg := tt.cfg
@@ -1377,7 +1437,7 @@ func TestExtractNonexistentOSRelease(t *testing.T) {
 				Maintainer:     "Guillem Jover <guillem@debian.org>",
 				Architecture:   "amd64",
 			},
-			Locations: []string{path},
+			Location: extractor.LocationFromPath(path),
 		},
 	}}
 
@@ -1408,6 +1468,181 @@ func TestExtractNonexistentOSRelease(t *testing.T) {
 	}
 	if diff := cmp.Diff(want, got); diff != "" {
 		t.Errorf("Extract(%s) (-want +got):\n%s", path, diff)
+	}
+}
+
+func TestExtractChroot(t *testing.T) {
+	ubuntuNoble := `VERSION_ID="24.04"
+VERSION_CODENAME=noble
+ID=ubuntu
+ID_LIKE=debian`
+
+	tests := []struct {
+		name            string
+		testdataPath    string
+		scanPath        string
+		outerOSRelease  string
+		chrootOSRelease string
+		wantPackages    []*extractor.Package
+		wantLogWarn     int
+	}{
+		{
+			name:            "chroot_uses_chroot_osrelease_over_outer_osrelease",
+			testdataPath:    "testdata/dpkg/single",
+			scanPath:        "chroot/var/lib/dpkg/status",
+			outerOSRelease:  ubuntuNoble,
+			chrootOSRelease: DebianBookworm,
+			wantPackages: []*extractor.Package{
+				{
+					Name:     "acl",
+					Version:  "2.3.1-3",
+					PURLType: purl.TypeDebian,
+					Metadata: &dpkgmeta.Metadata{
+						PackageName:       "acl",
+						PackageVersion:    "2.3.1-3",
+						Status:            "install ok installed",
+						OSID:              "debian",
+						OSVersionCodename: "bookworm",
+						OSVersionID:       "12",
+						Maintainer:        "Guillem Jover <guillem@debian.org>",
+						Architecture:      "amd64",
+					},
+					Location: extractor.LocationFromPath("chroot/var/lib/dpkg/status"),
+				},
+			},
+		},
+		{
+			name:           "chroot_falls_back_to_outer_osrelease_when_missing",
+			testdataPath:   "testdata/dpkg/single",
+			scanPath:       "chroot/var/lib/dpkg/status",
+			outerOSRelease: ubuntuNoble,
+			wantLogWarn:    1,
+			wantPackages: []*extractor.Package{
+				{
+					Name:     "acl",
+					Version:  "2.3.1-3",
+					PURLType: purl.TypeDebian,
+					Metadata: &dpkgmeta.Metadata{
+						PackageName:       "acl",
+						PackageVersion:    "2.3.1-3",
+						Status:            "install ok installed",
+						OSID:              "ubuntu",
+						OSVersionCodename: "noble",
+						OSVersionID:       "24.04",
+						Maintainer:        "Guillem Jover <guillem@debian.org>",
+						Architecture:      "amd64",
+					},
+					Location: extractor.LocationFromPath("chroot/var/lib/dpkg/status"),
+				},
+			},
+		},
+		{
+			name:            "chroot_status_d_uses_chroot_osrelease",
+			testdataPath:    "testdata/dpkg/status.d/foo",
+			scanPath:        "chroot/var/lib/dpkg/status.d/foo",
+			outerOSRelease:  ubuntuNoble,
+			chrootOSRelease: DebianBookworm,
+			wantPackages: []*extractor.Package{
+				{
+					Name:     "foo",
+					Version:  "1.2.3",
+					PURLType: purl.TypeDebian,
+					Metadata: &dpkgmeta.Metadata{
+						PackageName:       "foo",
+						PackageVersion:    "1.2.3",
+						OSID:              "debian",
+						OSVersionCodename: "bookworm",
+						OSVersionID:       "12",
+						Maintainer:        "someone",
+						Architecture:      "amd64",
+					},
+					Location: extractor.LocationFromPath("chroot/var/lib/dpkg/status.d/foo"),
+				},
+			},
+		},
+		{
+			name:            "chroot_opkg_sets_opkg_purl_and_uses_chroot_osrelease",
+			testdataPath:    "testdata/opkg/single",
+			scanPath:        "chroot/usr/lib/opkg/status",
+			outerOSRelease:  ubuntuNoble,
+			chrootOSRelease: OpkgRelease,
+			wantPackages: []*extractor.Package{
+				{
+					Name:     "ubus",
+					Version:  "2024.10.20~252a9b0c-r1",
+					PURLType: purl.TypeOpkg,
+					Metadata: &dpkgmeta.Metadata{
+						PackageName:       "ubus",
+						PackageVersion:    "2024.10.20~252a9b0c-r1",
+						Status:            "install ok installed",
+						Architecture:      "x86_64",
+						OSID:              "openwrt",
+						OSVersionCodename: "openwrt-21.02.1",
+						OSVersionID:       "21.02.1",
+					},
+					Location: extractor.LocationFromPath("chroot/usr/lib/opkg/status"),
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			logger := &testLogger{}
+			scalibrlog.SetLogger(logger)
+
+			d := t.TempDir()
+			if tt.outerOSRelease != "" {
+				createOsRelease(t, d, tt.outerOSRelease)
+			}
+			if tt.chrootOSRelease != "" {
+				createOsRelease(t, filepath.Join(d, "chroot"), tt.chrootOSRelease)
+			}
+
+			r, err := os.Open(tt.testdataPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				if err := r.Close(); err != nil {
+					t.Errorf("Close(): %v", err)
+				}
+			}()
+
+			info, err := os.Stat(tt.testdataPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			input := &filesystem.ScanInput{
+				FS:     fakefs.DirFS(t, d),
+				Path:   tt.scanPath,
+				Reader: r,
+				Root:   d,
+				Info:   info,
+			}
+
+			e, err := dpkg.New(&cpb.PluginConfig{
+				PluginSpecific: []*cpb.PluginSpecificConfig{
+					{Config: &cpb.PluginSpecificConfig_Dpkg{Dpkg: &cpb.DpkgConfig{IncludeNestedRoots: true}}},
+				},
+			})
+			if err != nil {
+				t.Fatalf("dpkg.New: %v", err)
+			}
+			got, err := e.Extract(t.Context(), input)
+			if err != nil {
+				t.Fatalf("Extract(%s) error: %v", tt.scanPath, err)
+			}
+
+			wantInv := inventory.Inventory{Packages: tt.wantPackages}
+			if diff := cmp.Diff(wantInv, got); diff != "" {
+				t.Errorf("Extract(%s) (-want +got):\n%s", tt.scanPath, diff)
+			}
+			if logger.warnings != tt.wantLogWarn {
+				t.Errorf("Extract(%s) recorded %d warnings, want %d warnings", tt.scanPath, logger.warnings, tt.wantLogWarn)
+			}
+		})
 	}
 }
 

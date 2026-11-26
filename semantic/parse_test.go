@@ -33,6 +33,8 @@ var ecosystems = []string{
 	"CRAN",
 	"crates.io",
 	"Debian",
+	"Docker Hardened Images",
+	"Echo",
 	"GHC",
 	"Go",
 	"Hex",

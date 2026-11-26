@@ -28,7 +28,6 @@ import (
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/remote"
 	scalibr "github.com/google/osv-scalibr"
-	scalibrimage "github.com/google/osv-scalibr/artifact/image"
 	"github.com/google/osv-scalibr/binary/cdx"
 	"github.com/google/osv-scalibr/binary/platform"
 	"github.com/google/osv-scalibr/binary/proto"
@@ -41,10 +40,12 @@ import (
 	"github.com/google/osv-scalibr/log"
 	"github.com/google/osv-scalibr/plugin"
 	pl "github.com/google/osv-scalibr/plugin/list"
+	plbin "github.com/google/osv-scalibr/plugin/list/binary"
 	"github.com/spdx/tools-golang/spdx/v2/common"
 	"google.golang.org/protobuf/encoding/prototext"
 
 	cpb "github.com/google/osv-scalibr/binary/proto/config_go_proto"
+	"github.com/google/osv-scalibr/plugin/config"
 )
 
 // Array is a type to be passed to flag.Var that supports arrays passed as repeated flags,
@@ -131,7 +132,7 @@ type Flags struct {
 	DirsToSkip            []string
 	SkipDirRegex          string
 	SkipDirGlob           string
-	MaxFileSize           int
+	MaxFileSize           int64
 	UseGitignore          bool
 	RemoteImage           string
 	ImageLocal            string
@@ -141,6 +142,7 @@ type Flags struct {
 	SPDXDocumentName      string
 	SPDXDocumentNamespace string
 	SPDXCreators          string
+	DeterministicIDs      bool
 	CDXComponentName      string
 	CDXComponentType      string
 	CDXComponentVersion   string
@@ -319,7 +321,7 @@ func validateGlob(arg string) error {
 
 func validateDependency(pluginNames []string, requireExtractors bool) error {
 	f := &Flags{PluginsToRun: pluginNames}
-	plugins, _, err := f.pluginsToRun()
+	plugins, _, err := f.resolvePluginsAndConfig()
 	if err != nil {
 		return err
 	}
@@ -350,13 +352,13 @@ func validateComponentType(componentType string) error {
 }
 
 type extractorOverride struct {
-	glob      glob.Glob
+	glob      *glob.Pattern
 	extractor filesystem.Extractor
 }
 
 // GetScanConfig constructs a SCALIBR scan config from the provided CLI flags.
 func (f *Flags) GetScanConfig() (*scalibr.ScanConfig, error) {
-	plugins, pluginCFG, err := f.pluginsToRun()
+	plugins, pluginCFG, err := f.resolvePluginsAndConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -379,7 +381,7 @@ func (f *Flags) GetScanConfig() (*scalibr.ScanConfig, error) {
 			return nil, err
 		}
 	}
-	var skipDirGlob glob.Glob
+	var skipDirGlob *glob.Pattern
 	if f.SkipDirGlob != "" {
 		skipDirGlob, err = glob.Compile(f.SkipDirGlob)
 		if err != nil {
@@ -475,11 +477,16 @@ func (f *Flags) GetSPDXConfig() convspdx.Config {
 
 // GetCDXConfig creates a CDXConfig struct based on the CLI flags.
 func (f *Flags) GetCDXConfig() converter.CDXConfig {
+	var authors []string
+	if f.CDXAuthors != "" {
+		authors = strings.Split(f.CDXAuthors, ",")
+	}
+
 	return converter.CDXConfig{
 		ComponentName:    f.CDXComponentName,
 		ComponentType:    f.CDXComponentType,
 		ComponentVersion: f.CDXComponentVersion,
-		Authors:          strings.Split(f.CDXAuthors, ","),
+		Authors:          authors,
 	}
 }
 
@@ -526,12 +533,18 @@ func (f *Flags) WriteScanResults(result *scalibr.ScanResult) error {
 }
 
 // TODO(b/279413691): Allow commas in argument names.
-func (f *Flags) pluginsToRun() ([]plugin.Plugin, *cpb.PluginConfig, error) {
+func (f *Flags) resolvePluginsAndConfig() ([]plugin.Plugin, *config.PluginConfig, error) {
+	plbin.EnableAdditionalPlugins()
+
 	result := make([]plugin.Plugin, 0, len(f.PluginsToRun))
 	pluginNames := multiStringToList(f.PluginsToRun)
-	pluginCFG, err := pluginCFGFromFlags(f.PluginCFG)
+	protoCFG, err := pluginProtoCFGFromFlags(f.PluginCFG)
 	if err != nil {
 		return nil, nil, err
+	}
+	pluginCFG := &config.PluginConfig{
+		ProtoConfig:     protoCFG,
+		ClientFactories: config.NewDefaultClientFactories(protoCFG.GetUserAgent()),
 	}
 
 	extractorNames := addPluginPrefixToGroups("extractors/", multiStringToList(f.ExtractorsToRun))
@@ -570,9 +583,9 @@ func addPluginPrefixToGroups(prefix string, pluginNames []string) []string {
 	return result
 }
 
-// pluginCFGFromFlags parses individually provided
+// pluginProtoCFGFromFlags parses individually provided
 // plugin config strings into one proto.
-func pluginCFGFromFlags(flags []string) (*cpb.PluginConfig, error) {
+func pluginProtoCFGFromFlags(flags []string) (*cpb.PluginConfig, error) {
 	var cfgString strings.Builder
 	for _, flag := range flags {
 		pluginCFG := &cpb.PluginConfig{}
@@ -603,20 +616,15 @@ func multiStringToList(arg []string) []string {
 }
 
 func (f *Flags) scanRoots() ([]*scalibrfs.ScanRoot, error) {
-	if f.RemoteImage != "" {
-		imageOptions := f.scanRemoteImageOptions()
-		fs, err := scalibrimage.NewFromRemoteName(f.RemoteImage, *imageOptions...)
-		if err != nil {
-			return nil, err
-		}
-		// We're scanning a virtual filesystem that describes the remote container.
-		return []*scalibrfs.ScanRoot{{FS: fs, Path: ""}}, nil
-	}
-
 	if len(f.Root) != 0 {
 		return scalibrfs.RealFSScanRoots(f.Root), nil
 	}
 
+	// If RemoteImage is set, do not set the root.
+	// It is computed later on by ScanContainer(...) when the remote image is pulled.
+	if f.RemoteImage != "" {
+		return nil, nil
+	}
 	// If ImageTarball is set, do not set the root.
 	// It is computed later on by ScanContainer(...) when the tarball is read.
 	if f.ImageTarball != "" {
@@ -641,7 +649,8 @@ func (f *Flags) scanRoots() ([]*scalibrfs.ScanRoot, error) {
 	return scanRoots, nil
 }
 
-func (f *Flags) scanRemoteImageOptions() *[]remote.Option {
+// RemoteImageOptions returns the remote.Option slice for pulling a remote container image.
+func (f *Flags) RemoteImageOptions() []remote.Option {
 	imageOptions := []remote.Option{
 		remote.WithAuthFromKeychain(authn.DefaultKeychain),
 	}
@@ -654,7 +663,7 @@ func (f *Flags) scanRemoteImageOptions() *[]remote.Option {
 			},
 		))
 	}
-	return &imageOptions
+	return imageOptions
 }
 
 // All capabilities are enabled when running SCALIBR as a binary.

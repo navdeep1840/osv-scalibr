@@ -16,7 +16,6 @@ package converter_test
 
 import (
 	"math/rand"
-	"runtime"
 	"testing"
 
 	"github.com/CycloneDX/cyclonedx-go"
@@ -28,10 +27,6 @@ import (
 	"github.com/google/osv-scalibr/purl"
 	"github.com/google/uuid"
 )
-
-func ptr[T any](v T) *T {
-	return &v
-}
 
 func TestToCDX(t *testing.T) {
 	// Make UUIDs deterministic
@@ -63,23 +58,24 @@ func TestToCDX(t *testing.T) {
 				Metadata: &cyclonedx.Metadata{
 					Component: &cyclonedx.Component{
 						Name:    "sbom-1",
+						Type:    cyclonedx.ComponentTypeApplication,
 						Version: "1.0.0",
 						BOMRef:  "52fdfc07-2182-454f-963f-5f0f9a621d72",
 					},
-					Authors: ptr([]cyclonedx.OrganizationalContact{{Name: "author"}}),
+					Authors: new([]cyclonedx.OrganizationalContact{{Name: "author"}}),
 					Tools: &cyclonedx.ToolsChoice{
 						Components: &[]cyclonedx.Component{
 							{
 								Type: cyclonedx.ComponentTypeApplication,
 								Name: "SCALIBR",
-								ExternalReferences: ptr([]cyclonedx.ExternalReference{
+								ExternalReferences: new([]cyclonedx.ExternalReference{
 									{URL: "https://github.com/google/osv-scalibr", Type: cyclonedx.ERTypeWebsite},
 								}),
 							},
 						},
 					},
 				},
-				Components: ptr([]cyclonedx.Component{
+				Components: new([]cyclonedx.Component{
 					{
 						BOMRef:     "9566c74d-1003-4c4d-bbbb-0407d1e2c649",
 						Type:       "library",
@@ -114,22 +110,61 @@ func TestToCDX(t *testing.T) {
 						Version: "1.0.0",
 						BOMRef:  "81855ad8-681d-4d86-91e9-1e00167939cb",
 					},
-					Authors: ptr([]cyclonedx.OrganizationalContact{{Name: "author"}}),
+					Authors: new([]cyclonedx.OrganizationalContact{{Name: "author"}}),
 					Tools: &cyclonedx.ToolsChoice{
 						Components: &[]cyclonedx.Component{
 							{
 								Type: cyclonedx.ComponentTypeApplication,
 								Name: "SCALIBR",
-								ExternalReferences: ptr([]cyclonedx.ExternalReference{
+								ExternalReferences: new([]cyclonedx.ExternalReference{
 									{URL: "https://github.com/google/osv-scalibr", Type: cyclonedx.ERTypeWebsite},
 								}),
 							},
 						},
 					},
 				},
-				Components: ptr([]cyclonedx.Component{
+				Components: new([]cyclonedx.Component{
 					{
 						BOMRef:     "6694d2c4-22ac-4208-a007-2939487f6999",
+						Type:       "library",
+						Name:       "software",
+						Version:    "1.2.3",
+						PackageURL: "pkg:pypi/software@1.2.3",
+					},
+				}),
+			},
+		},
+		{
+			desc: "Package_without_component_name",
+			inv: inventory.Inventory{
+				Packages: []*extractor.Package{{
+					Name:     "software",
+					Version:  "1.2.3",
+					PURLType: purl.TypePyPi,
+					Plugins:  []string{wheelegg.Name},
+				}},
+			},
+			config: converter.CDXConfig{
+				ComponentType:    "library",
+				ComponentVersion: "1.0.0",
+			},
+			want: &cyclonedx.BOM{
+				Metadata: &cyclonedx.Metadata{
+					Tools: &cyclonedx.ToolsChoice{
+						Components: &[]cyclonedx.Component{
+							{
+								Type: cyclonedx.ComponentTypeApplication,
+								Name: "SCALIBR",
+								ExternalReferences: new([]cyclonedx.ExternalReference{
+									{URL: "https://github.com/google/osv-scalibr", Type: cyclonedx.ERTypeWebsite},
+								}),
+							},
+						},
+					},
+				},
+				Components: new([]cyclonedx.Component{
+					{
+						BOMRef:     "eb9d18a4-4784-445d-87f3-c67cf22746e9",
 						Type:       "library",
 						Name:       "software",
 						Version:    "1.2.3",
@@ -154,45 +189,6 @@ func TestToCDX(t *testing.T) {
 
 			if diff := cmp.Diff(tc.want, got); diff != "" {
 				t.Errorf("converter.ToCDX(%v): unexpected diff (-want +got):\n%s", tc.inv, diff)
-			}
-		})
-	}
-}
-
-func TestToPURL(t *testing.T) {
-	tests := []struct {
-		desc   string
-		pkg    *extractor.Package
-		want   *purl.PackageURL
-		onGoos string
-	}{
-		{
-			desc: "Valid_package_extractor",
-			pkg: &extractor.Package{
-				Name:      "software",
-				Version:   "1.0.0",
-				PURLType:  purl.TypePyPi,
-				Locations: []string{"/file1"},
-				Plugins:   []string{wheelegg.Name},
-			},
-			want: &purl.PackageURL{
-				Type:    purl.TypePyPi,
-				Name:    "software",
-				Version: "1.0.0",
-			},
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.desc, func(t *testing.T) {
-			if tc.onGoos != "" && tc.onGoos != runtime.GOOS {
-				t.Skipf("Skipping test on %s", runtime.GOOS)
-			}
-
-			got := converter.ToPURL(tc.pkg)
-
-			if diff := cmp.Diff(tc.want, got); diff != "" {
-				t.Errorf("converter.ToPURL(%v) returned unexpected diff (-want +got):\n%s", tc.pkg, diff)
 			}
 		})
 	}

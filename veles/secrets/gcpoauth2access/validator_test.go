@@ -28,12 +28,25 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/google/osv-scalibr/veles"
+	sv "github.com/google/osv-scalibr/veles/secrets/common/simplevalidate"
 	"github.com/google/osv-scalibr/veles/secrets/gcpoauth2access"
+	"github.com/google/osv-scalibr/veles/velestest"
 )
 
 const (
 	endpoint = "https://www.googleapis.com/oauth2/v3/tokeninfo"
 )
+
+func TestAcceptValidator(t *testing.T) {
+	velestest.AcceptValidator(
+		t,
+		gcpoauth2access.NewValidator(),
+		velestest.WithTrueNegatives(gcpoauth2access.Token{Token: "osvscalibr-not-a-real-gcp-access-token"}),
+		velestest.WithBrokenTransport(func(v *sv.Validator[gcpoauth2access.Token]) {
+			v.HTTPC = velestest.BrokenClient
+		}),
+	)
+}
 
 type mockRoundTripper struct {
 	want *http.Request
@@ -81,7 +94,7 @@ func TestValidator_Validate(t *testing.T) {
 		roundTripper *mockRoundTripper
 		token        gcpoauth2access.Token
 		want         veles.ValidationStatus
-		wantErr      bool
+		wantErr      error
 	}{
 		{
 			name: "empty",
@@ -89,7 +102,7 @@ func TestValidator_Validate(t *testing.T) {
 				Token: "",
 			},
 			want:    veles.ValidationFailed,
-			wantErr: true,
+			wantErr: cmpopts.AnyError,
 		},
 		{
 			name: "request_error",
@@ -104,7 +117,7 @@ func TestValidator_Validate(t *testing.T) {
 				Token: realToken,
 			},
 			want:    veles.ValidationFailed,
-			wantErr: true,
+			wantErr: cmpopts.AnyError,
 		},
 		{
 			name: "bad_request",
@@ -137,7 +150,7 @@ func TestValidator_Validate(t *testing.T) {
 				Token: realToken,
 			},
 			want:    veles.ValidationFailed,
-			wantErr: true,
+			wantErr: cmpopts.AnyError,
 		},
 		{
 			name: "unexpected_json",
@@ -155,7 +168,7 @@ func TestValidator_Validate(t *testing.T) {
 				Token: realToken,
 			},
 			want:    veles.ValidationFailed,
-			wantErr: true,
+			wantErr: cmpopts.AnyError,
 		},
 		{
 			name: "valid_token",
@@ -231,14 +244,8 @@ func TestValidator_Validate(t *testing.T) {
 			v.HTTPC = &http.Client{Transport: tc.roundTripper}
 
 			got, err := v.Validate(t.Context(), tc.token)
-			if tc.wantErr {
-				if err == nil {
-					t.Errorf("Validate() error: %v, want error: %t", err, tc.wantErr)
-				}
-			} else {
-				if err != nil {
-					t.Errorf("Validate() error: %v, want nil", err)
-				}
+			if diff := cmp.Diff(tc.wantErr, err, cmpopts.EquateErrors()); diff != "" {
+				t.Errorf("Validate() error mismatch (-want +got):\n%s", diff)
 			}
 			if got != tc.want {
 				t.Errorf("Validate() = %q, want %q", got, tc.want)

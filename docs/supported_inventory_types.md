@@ -14,8 +14,8 @@ Plugins are grouped into the following categories:
 
 > [!TIP]
 > Learn how to contribute new plugins by reading the documentation
-> for [new extractors](/docs/new_extractor.md.md),
-> [new detectors](/docs/new_detector),
+> for [new extractors](/docs/new_extractor.md),
+> [new detectors](/docs/new_detector.md),
 > and [new enrichers](/docs/new_enricher.md).
 
 The following sections list all available plugins.
@@ -32,88 +32,118 @@ See the docs on [how to add a new Extractor](/docs/new_extractor.md).
 
 ### OS packages
 
-| Inventory Type    | Details                        | Extractor Plugin                             |
-| ----------------- | ------------------------------ | -------------------------------------------- |
-| Alpine            | APK                            | `os/apk`                                     |
-| Chrome extensions |                                | `chrome/extensions`                          |
-| COS               | cos-package-info.json          | `os/cos`                                     |
-| DPKG              | e.g. Debian, Ubuntu            | `os/dpkg`                                    |
-| Nix               |                                | `os/nix`                                     |
-| OPKG              | e.g. OpenWrt                   | `os/dpkg`                                    |
-| RPM               | e.g. RHEL, CentOS, Rocky Linux | `os/rpm`                                     |
-| Zypper            | e.g. openSUSE                  | `os/rpm`                                     |
-| Pacman            | e.g. Arch Linux                | `os/pacman`                                  |
-| Kernel modules    | .ko                            | `os/kernel/module`                           |
-| Kernel archives   | vmlinuz                        | `os/kernel/vmlinuz`                          |
-| Portage           | e.g. Gentoo Linux              | `os/portage`                                 |
-| SNAP              |                                | `os/snap`                                    |
-| Flatpak           |                                | `os/flatpak`                                 |
-| Homebrew          | OS X                           | `os/homebrew`                                |
-| MacPorts          | OS X                           | `os/macports`                                |
-| OS X Applications | OS X                           | `os/macapps`                                 |
-| Chocolatey        | Windows software               | `os/chocolatey`                              |
-| Windows           | Build number                   | `windows/regosversion`                       |
-| Windows           | Hotpatches                     | `windows/dismpatch`, `windows/regpatchlevel` |
-| Windows           | Installed software             | `windows/ospackages`                         |
+| Inventory Type     | Details                        | Extractor Plugin                             |
+|--------------------| ------------------------------ |----------------------------------------------|
+| Alpine             | APK                            | `os/apk`                                     |
+| Browser extensions |                                | `browser/extensions`                         |
+| COS                | cos-package-info.json          | `os/cos`                                     |
+| DPKG               | e.g. Debian, Ubuntu            | `os/dpkg`                                    |
+| Chisel             |                                | `os/chisel`                                  |
+| Nix                |                                | `os/nix`                                     |
+| OPKG               | e.g. OpenWrt                   | `os/dpkg`                                    |
+| RPM                | e.g. RHEL, CentOS, Rocky Linux, AlmaLinux, Mageia | `os/rpm`                                     |
+| Zypper             | e.g. openSUSE                  | `os/rpm`                                     |
+| Pacman             | e.g. Arch Linux                | `os/pacman`                                  |
+| Kernel modules     | .ko                            | `os/kernel/module`                           |
+| Kernel archives    | vmlinuz                        | `os/kernel/vmlinuz`                          |
+| Portage            | e.g. Gentoo Linux              | `os/portage`                                 |
+| SNAP               |                                | `os/snap`                                    |
+| Spack              |                                | `os/spack`                                   |
+| FreeBSD pkg        | FreeBSD and derivatives        | `os/freebsd`                                 |
+| Flatpak            |                                | `os/flatpak`                                 |
+| Homebrew           | OS X                           | `os/homebrew`                                |
+| MacPorts           | OS X                           | `os/macports`                                |
+| OS X Applications  | OS X                           | `os/macapps`                                 |
+| Chocolatey         | Windows software               | `os/chocolatey`                              |
+| Windows            | Build number                   | `windows/regosversion`                       |
+| Windows            | Hotpatches                     | `windows/dismpatch`, `windows/regpatchlevel` |
+| Windows            | Installed software             | `windows/ospackages`                         |
 
 ### Language packages
 
-| Language   | Details                                   | Extractor Plugin(s)                  |
-| ---------- | ----------------------------------------- | ------------------------------------ |
-| .NET       | packages.lock.json                        | `dotnet/packageslockjson`            |
-|            | packages.config                           | `dotnet/packagesconfig`              |
-|            | deps.json                                 | `dotnet/depsjson`                    |
-|            | portable executables                      | `dotnet/pe`                          |
-| C++        | Conan packages                            | `cpp/conanlock`                      |
-| Dart       | pubspec.lock                              | `dart/pubspec`                       |
-| Erlang     | mix.lock                                  | `erlang/mixlock`                     |
-| Elixir     | mix.lock                                  | `elixir/mixlock`                     |
-| Go         | Go binaries                               | `go/binary`                          |
-|            | go.mod (OSV)                              | `go/gomod`                           |
-| Haskell    | stack.yaml.lock                           | `haskell/stacklock`                  |
-|            | cabal.project.freeze                      | `haskell/cabal`                      |
-| Java       | Java archives                             | `java/archive`                       |
-|            | pom.xml                                   | `java/pomxml`, `java/pomxmlnet`      |
-|            | gradle.lockfile                           | `java/gradlelockfile`                |
-|            | verification-metadata.xml                 | `java/gradleverificationmetadataxml` |
-| Javascript | Installed NPM packages (package.json)     | `javascript/packagejson`             |
-|            | package-lock.json, npm-shrinkwrap.json    | `javascript/packagelockjson`         |
-|            | yarn.lock                                 | `javascript/yarnlock`                |
-|            | pnpm-lock.yaml                            | `javascript/pnpmlock`                |
-|            | bun.lock                                  | `javascript/bunlock`                 |
-| Lua        | Luarocks modules                          | `lua/luarocks`                       |
-| ObjectiveC | Podfile.lock                              | `swift/podfilelock`                  |
-| PHP        | Composer                                  | `php/composerlock`                   |
-| Python     | Installed PyPI packages (global and venv) | `python/wheelegg`                    |
-|            | requirements.txt                          | `python/requirements`                |
-|            | poetry.lock                               | `python/poetrylock`                  |
-|            | Pipfile.lock                              | `python/pipfilelock`                 |
-|            | pdm.lock                                  | `python/pdmlock`                     |
-|            | Conda packages                            | `python/condameta`                   |
-|            | setup.py                                  | `python/setup`                       |
-|            | uv.lock                                   | `python/uvlock`                      |
-| R          | renv.lock                                 | `r/renvlock`                         |
-| Ruby       | Installed Gem packages                    | `ruby/gemspec`                       |
-|            | Gemfile.lock, gems.locked                 | `ruby/gemfilelock`                   |
-| Rust       | Cargo.lock                                | `rust/cargolock`                     |
-|            | Cargo.toml                                | `rust/cargotoml`                     |
-|            | Rust binaries                             | `rust/cargoauditable`                |
-| Swift      | Podfile.lock                              | `swift/podfilelock`                  |
-|            | Package.resolved                          | `swift/packageresolved`              |
-| Nim        | Nimble packages                           | `nim/nimble`                         |
+| Language   | Details                                           | Extractor Plugin(s)                  |
+|------------|---------------------------------------------------|--------------------------------------|
+| .NET       | packages.lock.json                                | `dotnet/packageslockjson`            |
+|            | packages.config                                   | `dotnet/packagesconfig`              |
+|            | deps.json                                         | `dotnet/depsjson`                    |
+|            | paket.dependencies                                | `dotnet/paketdependencies`           |
+|            | paket.lock                                        | `dotnet/paketlock`                   |
+|            | portable executables                              | `dotnet/pe`                          |
+|            | NuGet Central Package Management                  | `dotnet/nugetcpm`                    |
+|            | Microsoft Build Engine (MSBuild) project files    | `dotnet/csproj`                      |
+|            | project.assets.json                               | `dotnet/projectassetsjson`           |
+| C++        | Conan packages                                    | `cpp/conanlock`                      |
+| Clojure    | project.clj (Leiningen)                           | `clojure/projectclj`                 |
+| Dart       | package_config.json                               | `dart/packageconfig`                 |
+| Dart       | pubspec.lock                                      | `dart/pubspec`                       |
+| Erlang     | mix.lock                                          | `erlang/mixlock`                     |
+|            | rebar.lock                                        | `erlang/rebarlock`                   |
+| Elixir     | mix.lock                                          | `elixir/mixlock`                     |
+| Gleam      | gleam.toml                                        | `gleam/gleamtoml`                    |
+| Go         | Go binaries                                       | `go/binary`                          |
+|            | go.mod (OSV)                                      | `go/gomod`                           |
+|            | go.work / go.work.sum                             | `go/gowork`                          |
+|            | vendor/modules.txt                                | `go/vendormodules`                   |
+| Haskell    | stack.yaml.lock                                   | `haskell/stacklock`                  |
+|            | cabal Installed packages                          | `haskell/cabalconf`                  |
+|            | cabal.project.freeze                              | `haskell/cabalprojectfreeze`         |
+| Java       | Java archives                                     | `java/archive`                       |
+|            | pom.xml                                           | `java/pomxml`                        |
+|            | gradle.lockfile                                   | `java/gradlelockfile`                |
+|            | verification-metadata.xml                         | `java/gradleverificationmetadataxml` |
+|            | libs.versions.toml (Gradle Version Catalog)       | `java/gradleversioncatalog`          |
+| Javascript | Installed NPM packages (package.json)             | `javascript/packagejson`             |
+|            | package-lock.json, npm-shrinkwrap.json            | `javascript/packagelockjson`         |
+|            | yarn.lock                                         | `javascript/yarnlock`                |
+|            | pnpm-lock.yaml                                    | `javascript/pnpmlock`                |
+|            | bun.lock                                          | `javascript/bunlock`                 |
+|            | deno.json                                         | `javascript/denojson`                |
+|            | deno TypeScript Source                            | `javascript/denotssource`            |
+|            | VS Code extension                                 | `javascript/vsix`                    |
+|            | Electron ASAR Archive                             | `javascript/electronasar`            |
+| Julia      | Julia package/project dependencies (Project.toml) | `julia/projecttoml`                  |
+|            | Julia installed packages (Manifest.toml)          | `julia/manifesttoml`                 |
+| Lua        | Luarocks modules                                  | `lua/luarocks`                       |
+| ObjectiveC | Podfile.lock                                      | `swift/podfilelock`                  |
+| PHP        | Composer                                          | `php/composerlock`                   |
+| Python     | Installed PyPI packages (global and venv)         | `python/wheelegg`                    |
+|            | requirements.txt                                  | `python/requirements`                |
+|            | poetry.lock                                       | `python/poetrylock`                  |
+|            | Pipfile.lock                                      | `python/pipfilelock`                 |
+|            | pdm.lock                                          | `python/pdmlock`                     |
+|            | Conda packages                                    | `python/condameta`                   |
+|            | setup.py                                          | `python/setup`                       |
+|            | setup.cfg                                         | `python/setupcfg`                    |
+|            | uv.lock                                           | `python/uvlock`                      |
+|            | pyproject.toml                                    | `python/pyprojecttoml`               |
+|            | IPython pip/uv/conda directives                   | `python/ipythoninstall`              |
+| R          | renv.lock                                         | `r/renvlock`                         |
+|            | Installed R packages                              | `r/rpkg`                             |
+| Ruby       | Installed Gem packages                            | `ruby/gemspec`                       |
+|            | Gemfile.lock, gems.locked                         | `ruby/gemfilelock`                   |
+|            | Gem packages (.gem)                               | `ruby/gem`                           |
+| Rust       | Cargo.lock                                        | `rust/cargolock`                     |
+|            | Cargo.toml                                        | `rust/cargotoml`                     |
+|            | Rust binaries                                     | `rust/cargoauditable`                |
+| Swift      | Podfile.lock                                      | `swift/podfilelock`                  |
+|            | Package.resolved                                  | `swift/packageresolved`              |
+| Nim        | Nimble packages                                   | `nim/nimble`                         |
+| Perl       | Perl CPAN packages                                | `perl/cpan`                          |
+| Zig        | Zig build.zig.zon packages                        | `zig/buildzigzon`                    |
 
-### Language runtime managers
+### Runtime managers
 
-| runtime | Details        | Extractor Plugin(s) |
-| ------- | -------------- | ------------------- |
-| asdf    | .tool-versions | `runtime/asdf`      |
-| mise    | mise.toml      | `runtime/mise`      |
-| nvm     | .nvmrc         | `runtime/nvm`       |
+| Manager     | Details        | Extractor Plugin(s)   |
+| ----------- | -------------- | --------------------- |
+| asdf        | .tool-versions | `runtime/asdf`        |
+| mise        | mise.toml      | `runtime/mise`        |
+| nodeversion | .node-version  | `runtime/nodeversion` |
+| nvm         | .nvmrc         | `runtime/nvm`         |
 
 ### Secrets
 
 | Type                                        | Extractor Plugin                       |
-| ------------------------------------------- | -------------------------------------- |
+|---------------------------------------------|----------------------------------------|
 | AWS access key                              | `secrets/awsaccesskey`                 |
 | Amazon CodeCommit credentials               | `secrets/codecommitcredentials`        |
 | Amazon CodeCatalyst credentials             | `secrets/codecatalystcredentials`      |
@@ -121,11 +151,18 @@ See the docs on [how to add a new Extractor](/docs/new_extractor.md).
 | Azure Storage Account access key            | `secrets/azurestorageaccountaccesskey` |
 | Azure Token                                 | `secrets/azuretoken`                   |
 | Bitbucket                                   | `secrets/bitbucketcredentials`         |
+| Bitwarden OAuth2 access token               | `secrets/bitwardenoauth2access`        |
+| Composer Packagist credentials              | `secrets/composerpackagist`            |
+| CircleCI Personal Access Token              | `secrets/circlecipat`                  |
+| CircleCI Project Token                      | `secrets/circleciproject`              |
+| Cloudflare API Token                        | `secrets/cloudflareapitoken`           |
 | Crates.io API Token                         | `secrets/cratesioapitoken`             |
 | Cursor API key                              | `secrets/cursorapikey`                 |
 | DigitalOcean API key                        | `secrets/digitaloceanapikey`           |
 | Docker hub PAT                              | `secrets/dockerhubpat`                 |
 | Elastic Cloud API key                       | `secrets/elasticcloudapikey`           |
+| Deno User PAT                               | `secrets/denopatuservalidate`          |
+| Deno Organization PAT                       | `secrets/denopatorgvalidate`           |
 | GCP API key                                 | `secrets/gcpapikey`                    |
 | GCP Express Mode API key                    | `secrets/gcpexpressmode`               |
 | GCP service account key                     | `secrets/gcpsak`                       |
@@ -142,12 +179,19 @@ See the docs on [how to add a new Extractor](/docs/new_extractor.md).
 | Hugging Face API key                        | `secrets/huggingfaceapikey`            |
 | MariaDB Credentials                         | `secrets/mariadb`                      |
 | Mysql Mylogin                               | `secrets/mysqlmylogin`                 |
+| npmjs Registry Access Tokens                | `secrets/npmjsaccesstoken`             |
 | 1Password Secret Key                        | `secrets/onepasswordsecretkey`         |
 | 1Password Service Token                     | `secrets/onepasswordservicetoken`      |
 | 1Password Recovery Code                     | `secrets/onepasswordrecoverycode`      |
 | 1Password Connect Token                     | `secrets/onepasswordconnecttoken`      |
 | OpenAI API key                              | `secrets/openai`                       |
 | OpenRouter API key                          | `secrets/openrouter`                   |
+| Packagist API Key                           | `secrets/packagistapi`                 |
+| Packagist API Secret                        | `secrets/packagistsecret`              |
+| Packagist Organization Read Token           | `secrets/packagistorgreadtoken`        |
+| Packagist Organization Update Token         | `secrets/packagistorgupdatetoken`      |
+| Packagist User Update Token                 | `secrets/packagistuserupdatetoken`     |
+| Packagist Conductor Update Token            | `secrets/packagistconductorupdatetoken`|
 | Perplexity API key                          | `secrets/perplexityapikey`             |
 | PyPI API Token                              | `secrets/pypiapitoken`                 |
 | Postgres pgpass file                        | `secrets/pgpass`                       |
@@ -155,12 +199,18 @@ See the docs on [how to add a new Extractor](/docs/new_extractor.md).
 | Postman Collection token                    | `secrets/postmancollectiontoken`       |
 | PEM/OpenSSH Private key                     | `secrets/privatekey`                   |
 | RubyGems API key                            | `secrets/rubygemsapikey`               |
+| Sendgrid API key                            | `secrets/sendgrid`                     |
 | Slack Application Level Token               | `secrets/slackappleveltoken`           |
 | Slack Configuration Access Token            | `secrets/slackappconfigaccesstoken`    |
 | Slack Configuration Refresh Token           | `secrets/slackappconfigrefreshtoken`   |
+| Square Personal Access Token                | `secrets/squarepersonalaccesstoken`    |
+| Square OAuth Application Secret             | `secrets/squareoauthapplicationsecret` |
 | Stripe Secret Key                           | `secrets/stripesecretkey`              |
 | Stripe Restricted Key                       | `secrets/striperestrictedkey`          |
 | Stripe Webhook Secret                       | `secrets/stripewebhooksecret`          |
+| Supabase PAT                                | `secrets/supabasepat`                  |
+| Supabase Project Secret Key                 | `secrets/supabaseprojectsecretkey`     |
+| Supabase Service Role JWT                   | `secrets/supabaseservicerolejwt`       |
 | Tink keyset                                 | `secrets/tinkkeyset`                   |
 | Paystack Secret Key                         | `secrets/paystacksecretkey`            |
 | Vapid keys                                  | `secrets/vapidkey`                     |
@@ -169,8 +219,26 @@ See the docs on [how to add a new Extractor](/docs/new_extractor.md).
 | pyx user key v1                             | `secrets/pyxkeyv1`                     |
 | pyx user key v2                             | `secrets/pyxkeyv2`                     |
 | Telegram Bot API Token                      | `secrets/telegrambottoken`             |
+| Salesforce OAuth2 Access Tokens             | `secrets/salesforceoauth2access`       |
 | Salesforce OAuth 2 Client Credentials       | `secrets/salesforceoauth2client`       |
+| Salesforce OAuth 2 JWT Credentials          | `secrets/salesforceoauth2jwt`          |
+| Salesforce OAuth 2 Refresh Credentials      | `secrets/salesforceoauth2refresh`      |
 | Generic URL with credentials                | `secrets/urlcreds`                     |
+| Heroku Platform API Key                     | `secrets/herokuplatformkey`            |
+| Discord Bot Token                           | `secrets/discordbottoken`              |
+| HTTP Basic Auth Header                      | `secrets/httpbasicauth`                |
+| HTTP Bearer                                 | `secrets/httpbearer`                   |
+| HTTP CSRF Token                             | `secrets/csrftoken`                    |
+| HTTP Cookie                                 | `secrets/httpcookie`                   |
+
+### Sensitive information
+| Type                                           | Extractor Plugin                       |
+| ---------------------------------------------- | -------------------------------------- |
+| Credit Card Number                             | `sensitiveinformation/creditcard`      |
+| International Bank Account Number              | `sensitiveinformation/iban`            |
+| US Adoption Taxpayer Identification Number     | `sensitiveinformation/atin`            |
+| US Individual Taxpayer Identification Number   | `secrets/itin`                         |
+| US Social Security Number                      | `sensitiveinformation/ssn`             |
 
 ### Container inventory
 
@@ -188,15 +256,20 @@ See the docs on [how to add a new Extractor](/docs/new_extractor.md).
 | -------------------------- | ---------------- |
 | SPDX SBOM descriptors      | `sbom/spdx`      |
 | CycloneDX SBOM descriptors | `sbom/cdx`       |
+| Bitnami container SBOMs    | `sbom/spdx`      |
 
 ### Misc
 
-| Type                    | Extractor Plugin    |
-| ----------------------- | ------------------- |
-| Wordpress plugins       | `wordpress/plugins` |
-| VSCode extensions       | `vscode/extensions` |
-| Chrome extensions       | `chrome/extensions` |
-| NetScaler installations | `netscaler`         |
+| Type                                 | Extractor Plugin     |
+|--------------------------------------|----------------------|
+| Wordpress plugins                    | `wordpress/plugins`  |
+| VSCode extensions                    | `vscode/extensions`  |
+| Browser extensions                   | `browser/extensions` |
+| Maven entries in Bazel build files   | `os/bazelmaven`      |
+| Bazel build graph targets            | `bazel/aspect` *     |
+| NetScaler installations              | `netscaler`          |
+| GitHub Actions workflow dependencies | `github/actions`     |
+| Git repositories (and submodules)    | `misc/gitrepo`       |
 
 ### EmbeddedFS
 
@@ -206,25 +279,29 @@ See the docs on [how to add a new Extractor](/docs/new_extractor.md).
 | ova     | Extracts .ova files                               | `embeddedfs/ova`     |
 | vdi     | Supports Ext4, ExFAT, FAT32, and NTFS filesystems | `embeddedfs/vdi`     |
 | vmdk    | Supports Ext4, ExFAT, FAT32, and NTFS filesystems | `embeddedfs/vmdk`    |
+| qcow2   | Supports Ext4, ExFAT, FAT32, and NTFS filesystems | `embeddedfs/qcow2`   |
 
 ## Detectors
 
-| Description                                                          | Plugin Name                              |
-| -------------------------------------------------------------------- | ---------------------------------------- |
-| Checks for overly permissive permissions on /etc/passwd.             | `cis/generic-linux/etcpasswdpermissions` |
-| Finds vulns in Go binaries with reachability data using govulncheck. | `govulncheck/binary`                     |
-| Checks if the Linux distribution is end-of-life.                     | `endoflife/linuxdistro`                  |
-| Detects vulnerability CVE-2023-38408 in OpenSSH.                     | `cve/cve-2023-38408`                     |
-| Detects vulnerability CVE-2022-33891 in Spark UI.                    | `cve/cve-2022-33891`                     |
-| Detects vulnerability CVE-2020-16846 in Salt.                        | `cve/cve-2020-16846`                     |
-| Detects vulnerability CVE-2023-6019 in Ray Dashboard.                | `cve/cve-2023-6019`                      |
-| Detects vulnerability CVE-2020-11978 in Apache Airflow.              | `cve/cve-2020-11978`                     |
-| Detects vulnerability CVE-2024-2912 in BentoML.                      | `cve/cve-2024-2912`                      |
-| Detects vulnerability CVE-2025-7775 in NetScaler ADC / Gateway       | `cve/cve-2025-7775`                      |
-| Checks for whether code-server has authentication enabled.           | `weakcredentials/codeserver`             |
-| Checks for weak passwords in /etc/shadow.                            | `weakcredentials/etcshadow`              |
-| Checks for default credentials in File Browser.                      | `weakcredentials/filebrowser`            |
-| Checks for weak passwords for local Windows accounts.                | `weakcredentials/winlocal`               |
+| Description                                                                  | Plugin Name                              |
+| ---------------------------------------------------------------------------- | ---------------------------------------- |
+| Checks for overly permissive permissions on /etc/passwd.                     | `cis/generic-linux/etcpasswdpermissions` |
+| Finds vulns in Go binaries with reachability data using govulncheck.         | `govulncheck/binary`                     |
+| Checks if the Linux distribution is end-of-life.                             | `endoflife/linuxdistro`                  |
+| Detects vulnerability CVE-2023-38408 in OpenSSH.                             | `cve/cve-2023-38408`                     |
+| Detects vulnerability CVE-2022-33891 in Spark UI.                            | `cve/cve-2022-33891`                     |
+| Detects vulnerability CVE-2020-16846 in Salt.                                | `cve/cve-2020-16846`                     |
+| Detects vulnerability CVE-2023-6019 in Ray Dashboard.                        | `cve/cve-2023-6019`                      |
+| Detects vulnerability CVE-2020-11978 in Apache Airflow.                      | `cve/cve-2020-11978`                     |
+| Detects vulnerability CVE-2024-2912 in BentoML.                              | `cve/cve-2024-2912`                      |
+| Detects vulnerability CVE-2025-7775 in NetScaler ADC / Gateway               | `cve/cve-2025-7775`                      |
+| Detects malicious NPM packages related to Canister worm                      | `cve/npm/canisterworm`                   |
+| Checks for whether code-server has authentication enabled.                   | `weakcredentials/codeserver`             |
+| Checks for weak passwords in /etc/shadow.                                    | `weakcredentials/etcshadow`              |
+| Checks for default credentials in File Browser.                              | `weakcredentials/filebrowser`            |
+| Checks for weak passwords for local Windows accounts.                        | `weakcredentials/winlocal`               |
+| Detects PAM misconfigurations that allow authentication bypass. (Linux-only) | `misc/pammisconfig`                      |
+| Detects CVE-2026-123158 OpenSSH + musl pre-authentication password bypass.   | `misc/sshhole`                           |
 
 ## Annotators
 
@@ -249,11 +326,15 @@ See the docs on [how to add a new Extractor](/docs/new_extractor.md).
 | Finds vulns in Go source with reachability data using govulncheck. Requires a vulnmatch enricher to be enabled. | `reachability/go/source`            |
 | Performs reachability analysis for Java code.                              | `reachability/java`                 |
 | Performs reachability analysis for Rust code. (Linux-only) *               | `reachability/rust`                 |
-| Resolves transitive dependencies for Python pip packages.                  | `transitivedependency/requirements` |
+| Resolves transitive dependencies for Java pom.xml files. *                 | `transitivedependency/pomxml`       |
+| Resolves transitive dependencies for Python requirements.txt files.        | `transitivedependency/requirements` |
+| Maps Ubuntu binary package names from chisel manifests to source package names using the OSV.dev API. | `os/ubuntu/binarytosource`          |
 | Queries the OSV.dev API to find vulnerabilities in the inventory packages. | `vulnmatch/osvdev`                  |
 | Adds license data to software packages                                     | `license/depsdev`                   |
 | Checks if package versions are deprecated (e.g. yanked, unpublished).      | `packagedeprecation/depsdev`        |
 
-Warning: Plugins marked with * use or mimic native toolchains.
-Any scripts or build-time logic defined within the project will run as-is.
-Please ensure you trust the source code before proceeding.
+Warning: Plugins marked with * are considered "unsafe" and require the
+`--allow-unsafe-plugins` flag. These plugins can be risky when run on untrusted
+artifacts as they may execute build-time logic defined within the project or
+follow external registries specified in the scanned artifacts.
+Please ensure you trust the source code and artifacts before proceeding.

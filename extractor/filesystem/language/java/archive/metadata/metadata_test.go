@@ -17,9 +17,9 @@ package metadata_test
 import (
 	"testing"
 
+	"deps.dev/util/maven"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/java/archive/metadata"
-	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/testing/protocmp"
 
 	pb "github.com/google/osv-scalibr/binary/proto/scan_result_go_proto"
@@ -30,101 +30,83 @@ var (
 		ArtifactID: "artifact-id",
 		GroupID:    "group-id",
 		SHA1:       "sha1",
+		Dependencies: []maven.Dependency{
+			{
+				GroupID:    maven.String("group-id-1"),
+				ArtifactID: maven.String("artifact-id-1"),
+				Version:    maven.String("1.0.0"),
+				Scope:      maven.String("compile"),
+				Optional:   "false",
+			},
+			{
+				GroupID:    maven.String("group-id-2"),
+				ArtifactID: maven.String("artifact-id-2"),
+				Version:    maven.String("1.0.0"),
+				Scope:      maven.String("test"),
+				Optional:   "true",
+			},
+		},
+		Parent: &maven.ProjectKey{
+			GroupID:    maven.String("parent-group-id"),
+			ArtifactID: maven.String("parent-artifact-id"),
+			Version:    maven.String("1.0.0"),
+		},
 	}
 	metadataProto1 = &pb.JavaArchiveMetadata{
 		ArtifactId: "artifact-id",
 		GroupId:    "group-id",
 		Sha1:       "sha1",
+		Dependencies: []*pb.JavaLockfileDependency{
+			{
+				GroupId:            "group-id-1",
+				ArtifactId:         "artifact-id-1",
+				VersionRequirement: "1.0.0",
+				Scope:              "compile",
+				IsOptional:         false,
+			},
+			{
+				GroupId:            "group-id-2",
+				ArtifactId:         "artifact-id-2",
+				VersionRequirement: "1.0.0",
+				Scope:              "test",
+				IsOptional:         true,
+			},
+		},
+		Parent: &pb.JavaLockfileParent{
+			GroupId:    "parent-group-id",
+			ArtifactId: "parent-artifact-id",
+			Version:    "1.0.0",
+		},
 	}
 )
 
-func TestSetProto(t *testing.T) {
+func TestToProto(t *testing.T) {
 	testCases := []struct {
 		desc string
 		m    *metadata.Metadata
-		p    *pb.Package
-		want *pb.Package
+		want *pb.JavaArchiveMetadata
 	}{
 		{
-			desc: "nil_metadata",
-			m:    nil,
-			p:    &pb.Package{Name: "some-package"},
-			want: &pb.Package{Name: "some-package"},
-		},
-		{
-			desc: "nil_package",
+			desc: "all_fields",
 			m:    metadataStruct1,
-			p:    nil,
-			want: nil,
-		},
-		{
-			desc: "set_metadata",
-			m:    metadataStruct1,
-			p:    &pb.Package{Name: "some-package"},
-			want: &pb.Package{
-				Name: "some-package",
-				Metadata: &pb.Package_JavaArchiveMetadata{
-					JavaArchiveMetadata: metadataProto1,
-				},
-			},
-		},
-		{
-			desc: "override_metadata",
-			m: &metadata.Metadata{
-				ArtifactID: "another-artifact-id",
-				GroupID:    "another-group-id",
-				SHA1:       "another-sha1",
-			},
-			p: &pb.Package{
-				Name: "some-package",
-				Metadata: &pb.Package_JavaArchiveMetadata{
-					JavaArchiveMetadata: metadataProto1,
-				},
-			},
-			want: &pb.Package{
-				Name: "some-package",
-				Metadata: &pb.Package_JavaArchiveMetadata{
-					JavaArchiveMetadata: &pb.JavaArchiveMetadata{
-						ArtifactId: "another-artifact-id",
-						GroupId:    "another-group-id",
-						Sha1:       "another-sha1",
-					},
-				},
-			},
-		},
-		{
-			desc: "set_all_fields",
-			m:    metadataStruct1,
-			p:    &pb.Package{Name: "some-package"},
-			want: &pb.Package{
-				Name: "some-package",
-				Metadata: &pb.Package_JavaArchiveMetadata{
-					JavaArchiveMetadata: metadataProto1,
-				},
-			},
+			want: metadataProto1,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.desc, func(t *testing.T) {
-			p := proto.Clone(tc.p).(*pb.Package)
-			tc.m.SetProto(p)
+			got := metadata.ToProto(tc.m)
 			opts := []cmp.Option{
 				protocmp.Transform(),
 			}
-			if diff := cmp.Diff(tc.want, p, opts...); diff != "" {
-				t.Errorf("Metatadata{%+v}.SetProto(%+v): (-want +got):\n%s", tc.m, tc.p, diff)
+			if diff := cmp.Diff(tc.want, got, opts...); diff != "" {
+				t.Errorf("metadata.ToProto(%+v): (-want +got):\n%s", tc.m, diff)
 			}
 
 			// Test the reverse conversion for completeness.
-
-			if tc.p == nil && tc.want == nil {
-				return
-			}
-
-			got := metadata.ToStruct(p.GetJavaArchiveMetadata())
-			if diff := cmp.Diff(tc.m, got); diff != "" {
-				t.Errorf("ToStruct(%+v): (-want +got):\n%s", p.GetJavaArchiveMetadata(), diff)
+			gotStruct := metadata.ToStruct(got)
+			if diff := cmp.Diff(tc.m, gotStruct); diff != "" {
+				t.Errorf("ToStruct(%+v): (-want +got):\n%s", got, diff)
 			}
 		})
 	}
@@ -136,11 +118,7 @@ func TestToStruct(t *testing.T) {
 		m    *pb.JavaArchiveMetadata
 		want *metadata.Metadata
 	}{
-		{
-			desc: "nil",
-			m:    nil,
-			want: nil,
-		},
+
 		{
 			desc: "all_fields",
 			m:    metadataProto1,
@@ -155,24 +133,13 @@ func TestToStruct(t *testing.T) {
 				t.Errorf("ToStruct(%+v): (-want +got):\n%s", tc.m, diff)
 			}
 
-			if tc.m == nil {
-				return
-			}
-
 			// Test the reverse conversion for completeness.
-
-			gotP := &pb.Package{}
-			wantP := &pb.Package{
-				Metadata: &pb.Package_JavaArchiveMetadata{
-					JavaArchiveMetadata: tc.m,
-				},
-			}
-			got.SetProto(gotP)
+			gotProto := metadata.ToProto(got)
 			opts := []cmp.Option{
 				protocmp.Transform(),
 			}
-			if diff := cmp.Diff(wantP, gotP, opts...); diff != "" {
-				t.Errorf("Metatadata{%+v}.SetProto(%+v): (-want +got):\n%s", got, wantP, diff)
+			if diff := cmp.Diff(tc.m, gotProto, opts...); diff != "" {
+				t.Errorf("metadata.ToProto(%+v): (-want +got):\n%s", got, diff)
 			}
 		})
 	}

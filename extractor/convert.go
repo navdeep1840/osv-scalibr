@@ -15,10 +15,13 @@
 package extractor
 
 import (
+	"strings"
+
 	hexpurl "github.com/google/osv-scalibr/extractor/filesystem/language/erlang/mixlock/purl"
 	gopurl "github.com/google/osv-scalibr/extractor/filesystem/language/golang/purl"
 	mavenpurl "github.com/google/osv-scalibr/extractor/filesystem/language/java/purl"
 	npmpurl "github.com/google/osv-scalibr/extractor/filesystem/language/javascript/purl"
+	composerpurl "github.com/google/osv-scalibr/extractor/filesystem/language/php/purl"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/python/pypipurl"
 	osecosystem "github.com/google/osv-scalibr/extractor/filesystem/os/ecosystem"
 	ospurl "github.com/google/osv-scalibr/extractor/filesystem/os/purl"
@@ -66,12 +69,16 @@ func typeSpecificPURL(p *Package) *purl.PackageURL {
 		return mavenpurl.MakePackageURL(p.Version, p.Metadata)
 	case purl.TypeNPM:
 		return npmpurl.MakePackageURL(p.Name, p.Version, p.Metadata)
+	case purl.TypeComposer:
+		return composerpurl.MakePackageURL(p.Name, p.Version)
 	case purl.TypeGolang:
 		return gopurl.MakePackageURL(p.Name, p.Version)
 	case purl.TypeHex:
 		return hexpurl.MakePackageURL(p.Name, p.Version)
+	case purl.TypeGithub:
+		return githubPURL(p.Name, p.Version)
 	case purl.TypeDebian, purl.TypeOpkg, purl.TypeFlatpak, purl.TypeApk, purl.TypeCOS, purl.TypeRPM,
-		purl.TypeSnap, purl.TypePacman, purl.TypePortage, purl.TypeNix:
+		purl.TypeSnap, purl.TypePacman, purl.TypePortage, purl.TypeNix, purl.TypeFreeBSD:
 		return ospurl.MakePackageURL(p.Name, p.Version, p.PURLType, p.Metadata)
 	case "windows":
 		return winpurl.MakePackageURL(p.Name, p.Version, p.Metadata)
@@ -79,13 +86,32 @@ func typeSpecificPURL(p *Package) *purl.PackageURL {
 	return nil
 }
 
+// githubPURL builds a pkg:github PURL from a Package whose Name is in
+// "owner/repo" form (the canonical pkg:github format places the owner in
+// the namespace and the repo in the name).
+func githubPURL(name, version string) *purl.PackageURL {
+	owner, repo, ok := strings.Cut(name, "/")
+	if !ok || owner == "" || repo == "" {
+		return &purl.PackageURL{
+			Type:    purl.TypeGithub,
+			Name:    name,
+			Version: version,
+		}
+	}
+	return &purl.PackageURL{
+		Type:      purl.TypeGithub,
+		Namespace: owner,
+		Name:      repo,
+		Version:   version,
+	}
+}
+
 // toEcosystem converts a SCALIBR package structure into an OSV ecosystem value
 // defined in https://ossf.github.io/osv-schema/#defined-ecosystems
 func toEcosystem(p *Package) osvecosystem.Parsed {
 	switch p.PURLType {
 	case purl.TypeDebian, purl.TypeOpkg, purl.TypeApk, purl.TypeRPM,
-		purl.TypeSnap, purl.TypePacman, purl.TypePortage:
-
+		purl.TypeSnap, purl.TypePacman, purl.TypePortage, purl.TypeFreeBSD:
 		return osecosystem.MakeEcosystem(p.Metadata)
 	case purl.TypePyPi:
 		return osvecosystem.FromEcosystem(osvconstants.EcosystemPyPI)
@@ -95,6 +121,8 @@ func toEcosystem(p *Package) osvecosystem.Parsed {
 		return osvecosystem.FromEcosystem(osvconstants.EcosystemNPM)
 	case purl.TypeGolang:
 		return osvecosystem.FromEcosystem(osvconstants.EcosystemGo)
+	case purl.TypeOpam:
+		return osvecosystem.FromEcosystem(osvconstants.EcosystemOpam)
 	// Not yet supported by OSV yet
 	// case purl.TypeCocoapods:
 	// 	return string(osvschema.EcosystemCocoaPods)
@@ -106,7 +134,7 @@ func toEcosystem(p *Package) osvecosystem.Parsed {
 		return osvecosystem.FromEcosystem(osvconstants.EcosystemRubyGems)
 	case purl.TypeNuget:
 		return osvecosystem.FromEcosystem(osvconstants.EcosystemNuGet)
-	case purl.TypeHaskell:
+	case purl.TypeHackage:
 		return osvecosystem.FromEcosystem(osvconstants.EcosystemHackage)
 	case purl.TypeHex:
 		return osvecosystem.FromEcosystem(osvconstants.EcosystemHex)
@@ -114,8 +142,28 @@ func toEcosystem(p *Package) osvecosystem.Parsed {
 		return osvecosystem.FromEcosystem(osvconstants.EcosystemPackagist)
 	case purl.TypeCargo:
 		return osvecosystem.FromEcosystem(osvconstants.EcosystemCratesIO)
+	case purl.TypeJulia:
+		return osvecosystem.FromEcosystem(osvconstants.EcosystemJulia)
 	case purl.TypePub:
 		return osvecosystem.FromEcosystem(osvconstants.EcosystemPub)
+	case purl.TypeDHI:
+		return osvecosystem.FromEcosystem(osvconstants.EcosystemDockerHardenedImages)
+	case purl.TypeBitnami:
+		return osvecosystem.FromEcosystem(osvconstants.EcosystemBitnami)
+	case purl.TypeGithub:
+		return osvecosystem.FromEcosystem(osvconstants.EcosystemGitHubActions)
+	case purl.TypeSwift:
+		return osvecosystem.FromEcosystem(osvconstants.EcosystemSwiftURL)
+	case purl.TypeBrew:
+		return osvecosystem.FromEcosystem(osvconstants.Ecosystem("GIT"))
+	case purl.TypeGit:
+		return osvecosystem.FromEcosystem(osvconstants.Ecosystem("GIT"))
+	}
+
+	// No Ecosystem defined for this package, but if it has a source code commit,
+	// return GIT as the ecosystem.
+	if p.SourceCode != nil && (p.SourceCode.Commit != "" || p.SourceCode.Repo != "") {
+		return osvecosystem.FromEcosystem(osvconstants.Ecosystem("GIT"))
 	}
 
 	// No Ecosystem defined for this package.

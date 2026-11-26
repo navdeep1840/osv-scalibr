@@ -1,0 +1,169 @@
+// Copyright 2026 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package osvlocal
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"os"
+	"path"
+
+	osvutil "github.com/google/osv-scalibr/enricher/vulnmatch/osvutil"
+	"github.com/google/osv-scalibr/extractor"
+	"github.com/google/osv-scalibr/log"
+	"github.com/ossf/osv-schema/bindings/go/osvconstants"
+	osvpb "github.com/ossf/osv-schema/bindings/go/osvschema"
+)
+
+const envKeyLocalDBCacheDirectory = "OSV_SCALIBR_LOCAL_DB_CACHE_DIRECTORY"
+
+// localMatcher implements the VulnerabilityMatcher interface by downloading the osv export zip files,
+// and performing the matching locally.
+type localMatcher struct {
+	zippedDBRemoteHost string
+
+	dbBasePath string
+	dbs        map[osvconstants.Ecosystem]*zipDB
+	downloadDB bool
+	// failedDBs keeps track of the errors when getting databases for each ecosystem
+	failedDBs  map[osvconstants.Ecosystem]error
+	httpClient *http.Client
+}
+
+func newlocalMatcher(localDBPath string, downloadDB bool, zippedDBRemoteHost string, httpClient *http.Client) (*localMatcher, error) {
+	dbBasePath, err := setupLocalDBDirectory(localDBPath)
+	if err != nil {
+		return nil, fmt.Errorf("could not create %s: %w", dbBasePath, err)
+	}
+
+	return &localMatcher{
+		zippedDBRemoteHost: zippedDBRemoteHost,
+
+		dbBasePath: dbBasePath,
+		dbs:        make(map[osvconstants.Ecosystem]*zipDB),
+		downloadDB: downloadDB,
+		failedDBs:  make(map[osvconstants.Ecosystem]error),
+		httpClient: httpClient,
+	}, nil
+}
+
+func (matcher *localMatcher) MatchVulnerabilities(ctx context.Context, pkg *extractor.Package, pkgs []*extractor.Package) ([]*osvpb.Vulnerability, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
+	if osvutil.IsLocal(pkg) {
+		return nil, nil
+	}
+
+	np := osvutil.ParsePackage(pkg)
+	eco := np.Ecosystem.Ecosystem
+
+	if (np.Ecosystem.String() == "GIT" || np.Ecosystem.IsEmpty()) && np.Version == "" {
+		// Commit-only query with no version tag; commit graph reachability requires online OSV API.
+		return nil, nil
+	}
+
+	if np.Ecosystem.IsEmpty() {
+		eco = "GIT"
+	}
+
+	db, err := matcher.loadDBFromCache(ctx, eco, pkgs)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return VulnerabilitiesAffectingPackage(db.Vulnerabilities, pkg), nil
+}
+
+func (matcher *localMatcher) loadDBFromCache(ctx context.Context, eco osvconstants.Ecosystem, invs []*extractor.Package) (*zipDB, error) {
+	if db, ok := matcher.dbs[eco]; ok {
+		return db, nil
+	}
+
+	if matcher.failedDBs[eco] != nil {
+		return nil, matcher.failedDBs[eco]
+	}
+
+	db, err := newZippedDB(
+		ctx,
+		matcher.dbBasePath,
+		string(eco),
+		fmt.Sprintf("%s/%s/all.zip", matcher.zippedDBRemoteHost, eco),
+		!matcher.downloadDB,
+		invs,
+		matcher.httpClient,
+	)
+
+	if err != nil {
+		err = fmt.Errorf("could not load db for %s ecosystem: %w", eco, err)
+		matcher.failedDBs[eco] = err
+		log.Errorf("%v", err)
+
+		return nil, err
+	}
+
+	log.Infof("Loaded %s local db from %s", db.Name, db.StoredAt)
+
+	matcher.dbs[eco] = db
+
+	return db, nil
+}
+
+// setupLocalDBDirectory attempts to set up the directory the scanner should
+// use to store local databases.
+//
+// if a local path is explicitly provided either by the localDBPath parameter
+// or via the envKeyLocalDBCacheDirectory environment variable, the scanner will
+// attempt to use the user cache directory if possible or otherwise the temp directory
+//
+// if an error occurs at any point when a local path is not explicitly provided,
+// the scanner will fall back to the temp directory first before finally erroring
+func setupLocalDBDirectory(localDBPath string) (string, error) {
+	var err error
+
+	// fallback to the env variable if a local database path has not been provided
+	if localDBPath == "" {
+		if p, envSet := os.LookupEnv(envKeyLocalDBCacheDirectory); envSet {
+			localDBPath = p
+		}
+	}
+
+	implicitPath := localDBPath == ""
+
+	// if we're implicitly picking a path, use the user cache directory if available
+	if implicitPath {
+		localDBPath, err = os.UserCacheDir()
+
+		if err != nil {
+			localDBPath = os.TempDir()
+		}
+	}
+
+	altPath := path.Join(localDBPath, "osv-scalibr")
+	err = os.MkdirAll(altPath, 0750)
+	if err == nil {
+		return altPath, nil
+	}
+
+	// if we're implicitly picking a path, try the temp directory before giving up
+	if implicitPath && localDBPath != os.TempDir() {
+		return setupLocalDBDirectory(os.TempDir())
+	}
+
+	return "", err
+}

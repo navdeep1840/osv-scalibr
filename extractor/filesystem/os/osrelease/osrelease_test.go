@@ -23,7 +23,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/osv-scalibr/extractor/filesystem/os/osrelease"
-	scalibrfs "github.com/google/osv-scalibr/fs"
+	"github.com/google/osv-scalibr/testing/fakefs"
 )
 
 func TestGetOSRelease(t *testing.T) {
@@ -112,7 +112,7 @@ func TestGetOSRelease(t *testing.T) {
 				t.Fatalf("WriteFile(%s): %v", tt.path, err)
 			}
 
-			got, err := osrelease.GetOSRelease(scalibrfs.DirFS(d))
+			got, err := osrelease.GetOSRelease(fakefs.DirFS(t, d))
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("FileRequired(%s) error: got %v, want %v", tt.path, err, tt.wantErr)
 			}
@@ -120,5 +120,16 @@ func TestGetOSRelease(t *testing.T) {
 				t.Fatalf("FileRequired(%s): got %v, want %v", tt.path, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestNotAnOS(t *testing.T) {
+	d := t.TempDir()
+	got, err := osrelease.GetOSRelease(fakefs.DirFS(t, d))
+	if !errors.Is(err, osrelease.ErrNotADistro) {
+		t.Fatalf("Got unexpected error on empty FS: %v", err)
+	}
+	if got != nil {
+		t.Fatalf("Got OS data on empty FS: %+v", got)
 	}
 }

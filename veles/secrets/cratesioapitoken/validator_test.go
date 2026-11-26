@@ -15,15 +15,18 @@
 package cratesioapitoken_test
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/google/osv-scalibr/veles"
+	sv "github.com/google/osv-scalibr/veles/secrets/common/simplevalidate"
 	"github.com/google/osv-scalibr/veles/secrets/cratesioapitoken"
+	"github.com/google/osv-scalibr/veles/velestest"
 )
 
 const validatorValidTestKey = "cioAbCdEfGhIjKlMnOpQrStUvWxYz123456"
@@ -77,13 +80,26 @@ func mockCratesioServer(t *testing.T, expectedKey string) *httptest.Server {
 	}))
 }
 
+func TestAcceptValidator(t *testing.T) {
+	velestest.AcceptValidator(
+		t,
+		cratesioapitoken.NewValidator(),
+		velestest.WithTrueNegatives(
+			cratesioapitoken.CratesIOAPItoken{Token: "randomKey"},
+			cratesioapitoken.CratesIOAPItoken{Token: validatorValidTestKey},
+		),
+		velestest.WithBrokenTransport(func(v *sv.Validator[cratesioapitoken.CratesIOAPItoken]) {
+			v.HTTPC = velestest.BrokenClient
+		}),
+	)
+}
+
 func TestValidator(t *testing.T) {
 	cases := []struct {
 		name              string
 		key               string
 		serverExpectedKey string
 		want              veles.ValidationStatus
-		expectError       bool
 	}{
 		{
 			name:              "valid_key",
@@ -114,58 +130,18 @@ func TestValidator(t *testing.T) {
 			validator := cratesioapitoken.NewValidator()
 			validator.HTTPC = client
 
-			// Create a test key
 			key := cratesioapitoken.CratesIOAPItoken{Token: tc.key}
 
-			// Test validation
 			got, err := validator.Validate(t.Context(), key)
 
-			// Check error expectation
-			if tc.expectError {
-				if err == nil {
-					t.Errorf("Validate() expected error, got nil")
-				}
-			} else {
-				if err != nil {
-					t.Errorf("Validate() unexpected error: %v", err)
-				}
+			if err != nil {
+				t.Errorf("Validate(): %v", err)
 			}
 
-			// Check validation status
 			if got != tc.want {
 				t.Errorf("Validate() = %v, want %v", got, tc.want)
 			}
 		})
-	}
-}
-
-func TestValidator_ContextCancellation(t *testing.T) {
-	// Create a server that delays response
-	server := mockCratesioServer(t, "Bearer "+validatorValidTestKey)
-	defer server.Close()
-
-	// Create a client with custom transport
-	client := &http.Client{
-		Transport: &mockTransport{testServer: server},
-	}
-
-	validator := cratesioapitoken.NewValidator()
-	validator.HTTPC = client
-
-	key := cratesioapitoken.CratesIOAPItoken{Token: validatorValidTestKey}
-
-	// Create a cancelled context
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-
-	// Test validation with cancelled context
-	got, err := validator.Validate(ctx, key)
-
-	if err == nil {
-		t.Errorf("Validate() expected error due to context cancellation, got nil")
-	}
-	if got != veles.ValidationFailed {
-		t.Errorf("Validate() = %v, want %v", got, veles.ValidationFailed)
 	}
 }
 
@@ -186,13 +162,13 @@ func TestValidator_InvalidRequest(t *testing.T) {
 		name     string
 		key      string
 		expected veles.ValidationStatus
-		wantErr  bool
+		wantErr  error
 	}{
 		{
 			name:     "empty_key",
 			key:      "",
 			expected: veles.ValidationFailed,
-			wantErr:  true,
+			wantErr:  cmpopts.AnyError,
 		},
 		{
 			name:     "invalid_key_format",
@@ -206,18 +182,13 @@ func TestValidator_InvalidRequest(t *testing.T) {
 			key := cratesioapitoken.CratesIOAPItoken{Token: tc.key}
 
 			got, err := validator.Validate(t.Context(), key)
-			if tc.wantErr {
-				if err == nil {
-					t.Errorf("Validate() expected error, got nil")
-				}
-			} else {
-				if err != nil {
-					t.Errorf("Validate() unexpected error for %s: %v", tc.name, err)
-				}
+
+			if diff := cmp.Diff(tc.wantErr, err, cmpopts.EquateErrors()); diff != "" {
+				t.Errorf("Validate() error mismatch (-want +got):\n%s", diff)
 			}
 
 			if got != tc.expected {
-				t.Errorf("Validate() = %v, want %v for %s", got, tc.expected, tc.name)
+				t.Errorf("Validate() = %v, want %v", got, tc.expected)
 			}
 		})
 	}

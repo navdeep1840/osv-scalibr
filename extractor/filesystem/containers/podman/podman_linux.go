@@ -44,6 +44,11 @@ func (e Extractor) FileRequired(api filesystem.FileAPI) bool {
 
 // Extract container inventory through the podman db file passed as the scan input.
 func (e Extractor) Extract(ctx context.Context, input *filesystem.ScanInput) (inventory.Inventory, error) {
+	if input.FS != nil {
+		if _, err := input.FS.Stat(filepath.ToSlash(input.Path)); err != nil {
+			return inventory.Inventory{}, fmt.Errorf("error opening file: %s with error: %w", input.Path, err)
+		}
+	}
 	path := filepath.Join(input.Root, input.Path)
 
 	state, err := getDBState(path)
@@ -64,9 +69,9 @@ func (e Extractor) Extract(ctx context.Context, input *filesystem.ScanInput) (in
 		}
 
 		pkgs = append(pkgs, &extractor.Package{
-			Name:      ctr.config.RawImageName,
-			Version:   ctr.config.RootfsImageID,
-			Locations: []string{input.Path},
+			Name:     ctr.config.RawImageName,
+			Version:  ctr.config.RootfsImageID,
+			Location: extractor.LocationFromPath(input.Path),
 			Metadata: &Metadata{
 				ExposedPorts: ctr.config.ExposedPorts,
 				PID:          ctr.state.PID,

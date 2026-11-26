@@ -85,7 +85,7 @@ func (s stateInitialize) Update(m Model, msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.relockBaseManifest = msg.resolvedManifest
 		m.relockBaseErrors = computeResolveErrors(msg.resolvedManifest.Graph)
 		if m.options.Lockfile == "" {
-			m.st = stateRelockResult{}
+			m.st = newStateRelockResult(m)
 		} else {
 			m.st = newStateChooseStrategy(m)
 		}
@@ -100,7 +100,7 @@ func (s stateInitialize) View(m Model) string {
 	if m.options.Lockfile == "" {
 		sb.WriteString("No lockfile provided. Assuming re-lock.\n")
 	} else {
-		sb.WriteString(fmt.Sprintf("Scanning %s ", components.SelectedTextStyle.Render(m.options.Lockfile)))
+		fmt.Fprintf(&sb, "Scanning %s ", components.SelectedTextStyle.Render(m.options.Lockfile))
 		if m.lockfileGraph.Graph == nil {
 			sb.WriteString(s.spinner.View())
 			sb.WriteString("\n")
@@ -110,7 +110,7 @@ func (s stateInitialize) View(m Model) string {
 		sb.WriteString("✓\n")
 	}
 
-	sb.WriteString(fmt.Sprintf("Resolving %s ", components.SelectedTextStyle.Render(m.options.Manifest)))
+	fmt.Fprintf(&sb, "Resolving %s ", components.SelectedTextStyle.Render(m.options.Manifest))
 	if m.relockBaseManifest == nil {
 		sb.WriteString(s.spinner.View())
 		sb.WriteString("\n")
@@ -134,7 +134,7 @@ type inPlaceResolutionMsg struct {
 
 func doInPlaceResolutionCmd(opts options.FixVulnsOptions, rw lockfile.ReadWriter) tea.Cmd {
 	return func() tea.Msg {
-		g, err := parser.ParseLockfile(opts.Lockfile, rw)
+		g, err := parser.ParseLockfile(opts.Lockfile, rw, opts.ProjectRoot)
 		if err != nil {
 			return inPlaceResolutionMsg{err: err}
 		}
@@ -158,7 +158,7 @@ type doRelockMsg struct {
 
 func doInitialRelockCmd(opts options.FixVulnsOptions, rw manifest.ReadWriter) tea.Cmd {
 	return func() tea.Msg {
-		m, err := parser.ParseManifest(opts.Manifest, rw)
+		m, err := parser.ParseManifest(opts.Manifest, rw, opts.ProjectRoot)
 		if err != nil {
 			return doRelockMsg{err: err}
 		}

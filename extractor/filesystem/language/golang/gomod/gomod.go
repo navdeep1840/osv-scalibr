@@ -29,6 +29,7 @@ import (
 	"github.com/google/osv-scalibr/extractor"
 	"github.com/google/osv-scalibr/extractor/filesystem"
 	"github.com/google/osv-scalibr/inventory"
+	"github.com/google/osv-scalibr/inventory/location"
 	"github.com/google/osv-scalibr/log"
 	"github.com/google/osv-scalibr/plugin"
 	"github.com/google/osv-scalibr/purl"
@@ -40,31 +41,28 @@ const (
 	Name = "go/gomod"
 )
 
-// Extractor extracts go packages from a go.mod file,
-// including the stdlib version by using the top level go version
+// Extractor extracts go packages from a go.mod file.
 //
 // The output is not sorted and will not be in a consistent order
 type Extractor struct {
 	excludeIndirect bool
+	includeStdlib   bool
 }
 
 // New returns a new instance of the extractor with the default configuration.
 func New(cfg *cpb.PluginConfig) (filesystem.Extractor, error) {
-	excludeIndirect := false
-
 	specific := plugin.FindConfig(cfg, func(c *cpb.PluginSpecificConfig) *cpb.GoModConfig { return c.GetGoMod() })
-	if specific != nil {
-		excludeIndirect = specific.GetExcludeIndirect()
-	}
-
-	return &Extractor{excludeIndirect: excludeIndirect}, nil
+	return &Extractor{
+		excludeIndirect: specific.GetExcludeIndirect(),
+		includeStdlib:   specific.GetIncludeStdlib(),
+	}, nil
 }
 
 // Name of the extractor.
 func (e Extractor) Name() string { return Name }
 
 // Version of the extractor.
-func (e Extractor) Version() int { return 0 }
+func (e Extractor) Version() int { return 1 }
 
 // Requirements of the extractor.
 func (e Extractor) Requirements() *plugin.Capabilities {
@@ -109,9 +107,9 @@ func (e Extractor) Extract(ctx context.Context, input *filesystem.ScanInput) (in
 	// merge go.sum packages with go.mod ones
 	for k, sumPkg := range sumPkgs {
 		if pkg, ok := pkgs[k]; ok {
-			// if the dependency is already present then add `go.sum` to its Locations slice
-			pkg.Locations = append(pkg.Locations, sumPkg.Locations...)
-		} else {
+			// if the dependency is already present then add `go.sum` to its related locations
+			pkg.Location.Related = append(pkg.Location.Related, *sumPkg.Location.Descriptor)
+		} else if !e.excludeIndirect {
 			// otherwise add a new dependency to the package
 			pkgs[k] = sumPkg
 		}
@@ -143,10 +141,10 @@ func (e Extractor) extractGoMod(input *filesystem.ScanInput) (map[pkgKey]*extrac
 		name := require.Mod.Path
 		version := strings.TrimPrefix(require.Mod.Version, "v")
 		packages[pkgKey{name: name, version: version}] = &extractor.Package{
-			Name:      name,
-			Version:   version,
-			PURLType:  purl.TypeGolang,
-			Locations: []string{input.Path},
+			Name:     name,
+			Version:  version,
+			PURLType: purl.TypeGolang,
+			Location: extractor.LocationFromPathAndLine(input.Path, require.Syntax.Start.Line),
 		}
 	}
 
@@ -175,32 +173,42 @@ func (e Extractor) extractGoMod(input *filesystem.ScanInput) (map[pkgKey]*extrac
 
 		for _, replacement := range replacements {
 			packages[replacement] = &extractor.Package{
-				Name:      replace.New.Path,
-				Version:   strings.TrimPrefix(replace.New.Version, "v"),
-				PURLType:  purl.TypeGolang,
-				Locations: []string{input.Path},
+				Name:     replace.New.Path,
+				Version:  strings.TrimPrefix(replace.New.Version, "v"),
+				PURLType: purl.TypeGolang,
+				Location: extractor.LocationFromPathAndLine(input.Path, replace.Syntax.Start.Line),
 			}
 		}
 	}
 
 	goVersion := ""
+	stdlibLine := 0
 	if parsedLockfile.Go != nil && parsedLockfile.Go.Version != "" {
 		goVersion = parsedLockfile.Go.Version
+		stdlibLine = parsedLockfile.Go.Syntax.Start.Line
 	}
 
 	// Give the toolchain version priority, if present
 	if parsedLockfile.Toolchain != nil && parsedLockfile.Toolchain.Name != "" {
 		version, _, _ := strings.Cut(parsedLockfile.Toolchain.Name, "-")
 		goVersion = strings.TrimPrefix(version, "go")
+		stdlibLine = parsedLockfile.Toolchain.Syntax.Start.Line
 	}
 
-	// Add the Go stdlib as an explicit dependency.
-	if goVersion != "" {
+	// Add the Go stdlib as an explicit dependency when configured.
+	if e.includeStdlib && goVersion != "" {
 		packages[pkgKey{name: "stdlib"}] = &extractor.Package{
-			Name:      "stdlib",
-			Version:   goVersion,
-			PURLType:  purl.TypeGolang,
-			Locations: []string{input.Path},
+			Name:     "stdlib",
+			Version:  goVersion,
+			PURLType: purl.TypeGolang,
+			Location: extractor.PackageLocation{
+				Descriptor: &location.Location{
+					File: &location.File{
+						Path:       input.Path,
+						LineNumber: stdlibLine,
+					},
+				},
+			},
 		}
 	}
 

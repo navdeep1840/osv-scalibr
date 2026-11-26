@@ -23,7 +23,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/google/osv-scalibr/clients/clienttest"
-	scalibrfs "github.com/google/osv-scalibr/fs"
 	"github.com/google/osv-scalibr/guidedremediation/internal/lockfile"
 	"github.com/google/osv-scalibr/guidedremediation/internal/lockfile/npm"
 	"github.com/google/osv-scalibr/guidedremediation/internal/remediation"
@@ -31,10 +30,11 @@ import (
 	"github.com/google/osv-scalibr/guidedremediation/internal/vulnenrichertest"
 	"github.com/google/osv-scalibr/guidedremediation/options"
 	"github.com/google/osv-scalibr/guidedremediation/result"
+	"github.com/google/osv-scalibr/testing/fakefs"
 )
 
 func TestComputePatches(t *testing.T) {
-	npmWR, err := npm.GetReadWriter()
+	npmWR, err := npm.GetReadWriter(nil)
 	if err != nil {
 		t.Fatalf("failed getting ReadWriter: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestComputePatches(t *testing.T) {
 				t.Fatalf("failed decoding wantFile: %v", err)
 			}
 
-			fsys := scalibrfs.DirFS("./testdata")
+			fsys := fakefs.DirFS(t, fakefs.CopyTestData(t, "./testdata"))
 			g, err := tt.readWriter.Read(tt.lockfilePath, fsys)
 			if err != nil {
 				t.Fatalf("failed reading graph: %v", err)

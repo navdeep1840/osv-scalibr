@@ -6,7 +6,7 @@ scalibr:
 	CGO_ENABLED=1 go build binary/scalibr/scalibr.go
 
 lint:
-	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.6.1 run ./...
+	go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(file < .golangci-lint-version) run ./...
 
 lint-plugger:
 	go run linter/plugger/main.go \
@@ -15,8 +15,19 @@ lint-plugger:
 		-interface github.com/google/osv-scalibr/veles.Detector \
 		./...
 
+lint-secureprotocol:
+	go run linter/secureprotocol/main.go ./...
+
 test:
 	CGO_ENABLED=1 go test ./...
+
+test-accept-validator:
+	ONLINE=1 CGO_ENABLED=1 go test ./veles/secrets/... -run 'TestAccept.*Validator'
+
+test_bench:
+	# add `-benchmem -cpuprofile=cpu.prof -memprofile=mem.prof` to extract cpu and memory profiling
+	# then check check pprof with `go tool pprof -http=:8080 cpu.prof`
+	CGO_ENABLED=1 go test github.com/google/osv-scalibr/veles/secrets/common/ntuple -bench=BenchmarkDetector
 
 protos:
 ifeq ($(OS),Windows_NT)

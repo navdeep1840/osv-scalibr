@@ -27,7 +27,6 @@ import (
 	"github.com/google/osv-scalibr/extractor/filesystem/internal/units"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/dotnet/depsjson"
 	"github.com/google/osv-scalibr/extractor/filesystem/simplefileapi"
-	scalibrfs "github.com/google/osv-scalibr/fs"
 	"github.com/google/osv-scalibr/inventory"
 	"github.com/google/osv-scalibr/purl"
 	"github.com/google/osv-scalibr/stats"
@@ -49,6 +48,12 @@ func TestFileRequired(t *testing.T) {
 		{
 			name:             "application1.deps.json file",
 			path:             "application1.deps.json",
+			wantRequired:     true,
+			wantResultMetric: stats.FileRequiredResultOK,
+		},
+		{
+			name:             "editor.deps.json file",
+			path:             "editor.deps.json",
 			wantRequired:     true,
 			wantResultMetric: stats.FileRequiredResultOK,
 		},
@@ -151,7 +156,7 @@ func TestExtract(t *testing.T) {
 						PackageVersion: "1.0.0",
 						Type:           "project",
 					},
-					Locations: []string{"testdata/valid"},
+					Location: extractor.LocationFromPath("testdata/valid"),
 				},
 				{
 					Name:     "AWSSDK.Core",
@@ -162,7 +167,7 @@ func TestExtract(t *testing.T) {
 						PackageVersion: "3.7.10.6",
 						Type:           "package",
 					},
-					Locations: []string{"testdata/valid"},
+					Location: extractor.LocationFromPath("testdata/valid"),
 				},
 				{
 					Name:     "Microsoft.Extensions.DependencyInjection",
@@ -173,7 +178,7 @@ func TestExtract(t *testing.T) {
 						PackageVersion: "6.0.0",
 						Type:           "package",
 					},
-					Locations: []string{"testdata/valid"},
+					Location: extractor.LocationFromPath("testdata/valid"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -191,6 +196,12 @@ func TestExtract(t *testing.T) {
 			wantResultMetric: stats.FileExtractedResultErrorUnknown,
 		},
 		{
+			name:             "editor.deps.json not an object",
+			path:             "testdata/editor.deps.json",
+			wantPackages:     nil,
+			wantResultMetric: stats.FileExtractedResultSuccess,
+		},
+		{
 			name: "valid_application1.deps.json_file_with_an_invalid_package",
 			path: "testdata/nopackagename",
 			wantPackages: []*extractor.Package{
@@ -203,7 +214,7 @@ func TestExtract(t *testing.T) {
 						PackageVersion: "1.0.0",
 						Type:           "project",
 					},
-					Locations: []string{"testdata/nopackagename"},
+					Location: extractor.LocationFromPath("testdata/nopackagename"),
 				},
 				{
 					Name:     "AWSSDK.Core",
@@ -214,7 +225,7 @@ func TestExtract(t *testing.T) {
 						PackageVersion: "3.7.10.6",
 						Type:           "package",
 					},
-					Locations: []string{"testdata/nopackagename"},
+					Location: extractor.LocationFromPath("testdata/nopackagename"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -249,7 +260,7 @@ func TestExtract(t *testing.T) {
 			}
 
 			input := &filesystem.ScanInput{
-				FS: scalibrfs.DirFS(d), Path: tt.path, Reader: r, Root: d, Info: info,
+				FS: fakefs.DirFS(t, d), Path: tt.path, Reader: r, Root: d, Info: info,
 			}
 
 			got, err := e.Extract(t.Context(), input)

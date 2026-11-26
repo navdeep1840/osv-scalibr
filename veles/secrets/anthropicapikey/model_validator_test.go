@@ -19,8 +19,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/google/osv-scalibr/veles"
 	"github.com/google/osv-scalibr/veles/secrets/anthropicapikey"
+	sv "github.com/google/osv-scalibr/veles/secrets/common/simplevalidate"
+	"github.com/google/osv-scalibr/veles/velestest"
 )
 
 const (
@@ -61,13 +65,26 @@ func mockAnthropicModelServer(t *testing.T, expectedKey string, statusCode int, 
 	return server
 }
 
+func TestAcceptModelValidator(t *testing.T) {
+	velestest.AcceptValidator(
+		t,
+		anthropicapikey.NewModelValidator(),
+		velestest.WithTrueNegatives(anthropicapikey.ModelAPIKey{
+			Key: "sk-ant-api03-osvscalibr-invalid000000000000000000000000000000000000000000000000",
+		}),
+		velestest.WithBrokenTransport(func(v *sv.Validator[anthropicapikey.ModelAPIKey]) {
+			v.HTTPC = velestest.BrokenClient
+		}),
+	)
+}
+
 func TestModelValidator(t *testing.T) {
 	cases := []struct {
 		name         string
 		statusCode   int
 		responseBody string
 		want         veles.ValidationStatus
-		expectError  bool
+		wantErr      error
 	}{
 		{
 			name:       "valid_key",
@@ -104,8 +121,8 @@ func TestModelValidator(t *testing.T) {
 					"message": "Your account does not have permission to perform this action"
 				}
 			}`,
-			want:        veles.ValidationFailed,
-			expectError: true,
+			want:    veles.ValidationFailed,
+			wantErr: cmpopts.AnyError,
 		},
 		{
 			name:       "rate_limited_but_likely_valid",
@@ -127,8 +144,8 @@ func TestModelValidator(t *testing.T) {
 					"message": "Internal server error"
 				}
 			}`,
-			want:        veles.ValidationFailed,
-			expectError: true,
+			want:    veles.ValidationFailed,
+			wantErr: cmpopts.AnyError,
 		},
 	}
 
@@ -143,24 +160,14 @@ func TestModelValidator(t *testing.T) {
 			validator.HTTPC = server.Client()
 			validator.Endpoint = server.URL + anthropicapikey.AnthropicModelsEndpoint
 
-			// Create test key
 			key := anthropicapikey.ModelAPIKey{Key: modelValidatorTestKey}
 
-			// Test validation
 			got, err := validator.Validate(t.Context(), key)
 
-			// Check error expectation
-			if tc.expectError {
-				if err == nil {
-					t.Errorf("Validate() expected error, got nil")
-				}
-			} else {
-				if err != nil {
-					t.Errorf("Validate() unexpected error: %v", err)
-				}
+			if diff := cmp.Diff(tc.wantErr, err, cmpopts.EquateErrors()); diff != "" {
+				t.Errorf("Validate() error mismatch (-want +got):\n%s", diff)
 			}
 
-			// Check validation status
 			if got != tc.want {
 				t.Errorf("Validate() = %v, want %v", got, tc.want)
 			}

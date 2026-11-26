@@ -21,11 +21,28 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/google/osv-scalibr/veles"
+	sv "github.com/google/osv-scalibr/veles/secrets/common/simplevalidate"
 	"github.com/google/osv-scalibr/veles/secrets/pypiapitoken"
+	"github.com/google/osv-scalibr/veles/velestest"
 )
 
 const validatorTestKey = `pypi-AgEIc433aS5vcmcffDgyZDA0MzFkLWMzZjEtNDlhNy1iOWQwLfflMjE5NmNkMjhjNQACKlszLCI22UBiYzQ2Yi05YjNhhTQ5NmItYWIxMHYhMGI3MmEyOWI5MzYiXQAABiCJBI80LFFz0JvS6UIj2LzgV9N-BQnBAD2123Dyu9xs33`
+
+func TestAcceptValidator(t *testing.T) {
+	velestest.AcceptValidator(
+		t,
+		pypiapitoken.NewValidator(),
+		velestest.WithTrueNegatives(pypiapitoken.PyPIAPIToken{
+			Token: "pypi-osvscalibr-invalid0000000000000000000000000000000000000000",
+		}),
+		velestest.WithBrokenTransport(func(v *sv.Validator[pypiapitoken.PyPIAPIToken]) {
+			v.HTTPC = velestest.BrokenClient
+		}),
+	)
+}
 
 // mockPyPIServer creates a mock PyPI API server for testing
 func mockPyPIServer(t *testing.T, expectedKey string, serverResponseCode int) *httptest.Server {
@@ -60,7 +77,7 @@ func TestValidator(t *testing.T) {
 		serverExpectedKey  string
 		serverResponseCode int
 		want               veles.ValidationStatus
-		expectError        bool
+		wantErr            error
 	}{
 		{
 			name:               "valid_key",
@@ -80,13 +97,13 @@ func TestValidator(t *testing.T) {
 			name:               "server_error",
 			serverResponseCode: http.StatusInternalServerError,
 			want:               veles.ValidationFailed,
-			expectError:        true,
+			wantErr:            cmpopts.AnyError,
 		},
 		{
 			name:               "bad_gateway",
 			serverResponseCode: http.StatusBadGateway,
 			want:               veles.ValidationFailed,
-			expectError:        true,
+			wantErr:            cmpopts.AnyError,
 		},
 	}
 
@@ -100,55 +117,18 @@ func TestValidator(t *testing.T) {
 			validator.HTTPC = server.Client()
 			validator.Endpoint = server.URL + "/legacy/"
 
-			// Create a test key
 			key := pypiapitoken.PyPIAPIToken{Token: tc.key}
 
-			// Test validation
 			got, err := validator.Validate(context.Background(), key)
 
-			// Check error expectation
-			if tc.expectError {
-				if err == nil {
-					t.Errorf("Validate() expected error, got nil")
-				}
-			} else {
-				if err != nil {
-					t.Errorf("Validate() unexpected error: %v", err)
-				}
+			if diff := cmp.Diff(tc.wantErr, err, cmpopts.EquateErrors()); diff != "" {
+				t.Errorf("Validate() error mismatch (-want +got):\n%s", diff)
 			}
 
-			// Check validation status
 			if got != tc.want {
 				t.Errorf("Validate() = %v, want %v", got, tc.want)
 			}
 		})
-	}
-}
-
-func TestValidator_ContextCancellation(t *testing.T) {
-	// Create a server that delays response
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
-	validator := pypiapitoken.NewValidator()
-	validator.HTTPC = server.Client()
-	validator.Endpoint = server.URL + "/legacy/"
-
-	key := pypiapitoken.PyPIAPIToken{Token: validatorTestKey}
-
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-
-	// Test validation with cancelled context
-	got, err := validator.Validate(ctx, key)
-
-	if err == nil {
-		t.Errorf("Validate() expected error due to context cancellation, got nil")
-	}
-	if got != veles.ValidationFailed {
-		t.Errorf("Validate() = %v, want %v", got, veles.ValidationFailed)
 	}
 }
 
@@ -164,22 +144,22 @@ func TestValidator_InvalidRequest(t *testing.T) {
 	validator.Endpoint = server.URL + "/legacy/"
 
 	testCases := []struct {
-		name        string
-		key         string
-		expected    veles.ValidationStatus
-		expectError bool
+		name     string
+		key      string
+		expected veles.ValidationStatus
+		wantErr  error
 	}{
 		{
-			name:        "empty_key",
-			key:         "",
-			expected:    veles.ValidationFailed,
-			expectError: true,
+			name:     "empty_key",
+			key:      "",
+			expected: veles.ValidationFailed,
+			wantErr:  cmpopts.AnyError,
 		},
 		{
-			name:        "invalid_key_format",
-			key:         "invalid-key-format",
-			expected:    veles.ValidationFailed,
-			expectError: true,
+			name:     "invalid_key_format",
+			key:      "invalid-key-format",
+			expected: veles.ValidationFailed,
+			wantErr:  cmpopts.AnyError,
 		},
 	}
 
@@ -189,14 +169,8 @@ func TestValidator_InvalidRequest(t *testing.T) {
 
 			got, err := validator.Validate(context.Background(), key)
 
-			if tc.expectError {
-				if err == nil {
-					t.Errorf("Validate() expected error for %s, got nil", tc.name)
-				}
-			} else {
-				if err != nil {
-					t.Errorf("Validate() unexpected error for %s: %v", tc.name, err)
-				}
+			if diff := cmp.Diff(tc.wantErr, err, cmpopts.EquateErrors()); diff != "" {
+				t.Errorf("Validate() error mismatch (-want +got):\n%s", diff)
 			}
 			if got != tc.expected {
 				t.Errorf("Validate() = %v, want %v for %s", got, tc.expected, tc.name)

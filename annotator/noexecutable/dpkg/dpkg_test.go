@@ -28,9 +28,9 @@ import (
 	"github.com/google/osv-scalibr/common/linux/dpkg/testing/dpkgutil"
 	"github.com/google/osv-scalibr/extractor"
 	dpkgmetadata "github.com/google/osv-scalibr/extractor/filesystem/os/dpkg/metadata"
-	scalibrfs "github.com/google/osv-scalibr/fs"
 	"github.com/google/osv-scalibr/inventory"
 	"github.com/google/osv-scalibr/inventory/vex"
+	"github.com/google/osv-scalibr/testing/fakefs"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -61,16 +61,15 @@ func TestAnnotate(t *testing.T) {
 		{
 			desc:         "missing_info_dir",
 			infoContents: nil,
-			wantErr:      cmpopts.AnyError,
 		},
 		{
 			desc:         "empty_info_dir",
 			infoContents: map[string]string{},
 			packages: []*extractor.Package{
-				{Name: "curl", Metadata: dpkgmetadata.Metadata{}},
+				{Name: "curl", Metadata: &dpkgmetadata.Metadata{}},
 			},
 			wantPackages: []*extractor.Package{
-				{Name: "curl", Metadata: dpkgmetadata.Metadata{}},
+				{Name: "curl", Metadata: &dpkgmetadata.Metadata{}},
 			},
 			wantErr: cmpopts.AnyError,
 		},
@@ -81,10 +80,10 @@ func TestAnnotate(t *testing.T) {
 				"curl.list": "/usr/\n/usr/bin/\n/usr/bin/curl\n/usr/share/\n/usr/share/doc/\n/usr/share/doc/curl/\n/usr/share/doc/curl/README.Debian\n/usr/share/doc/curl/changelog.Debian.gz",
 			},
 			packages: []*extractor.Package{
-				{Name: "curl", Metadata: dpkgmetadata.Metadata{}},
+				{Name: "curl", Metadata: &dpkgmetadata.Metadata{}},
 			},
 			wantPackages: []*extractor.Package{
-				{Name: "curl", Metadata: dpkgmetadata.Metadata{}},
+				{Name: "curl", Metadata: &dpkgmetadata.Metadata{}},
 			},
 			wantErr: cmpopts.AnyError,
 		},
@@ -94,10 +93,10 @@ func TestAnnotate(t *testing.T) {
 				"curl.list": "/usr/\n/usr/bin/\n/usr/bin/curl\n/usr/share/\n/usr/share/doc/\n/usr/share/doc/curl/\n/usr/share/doc/curl/README.Debian\n/usr/share/doc/curl/changelog.Debian.gz",
 			},
 			packages: []*extractor.Package{
-				{Name: "curl", Metadata: dpkgmetadata.Metadata{}},
+				{Name: "curl", Metadata: &dpkgmetadata.Metadata{}},
 			},
 			wantPackages: []*extractor.Package{
-				{Name: "curl", Metadata: dpkgmetadata.Metadata{}},
+				{Name: "curl", Metadata: &dpkgmetadata.Metadata{}},
 			},
 		},
 		{
@@ -106,12 +105,12 @@ func TestAnnotate(t *testing.T) {
 				"curl.list": "/usr/\n/usr/share/\n/usr/share/doc/\n/usr/share/doc/curl/\n/usr/share/doc/curl/README.Debian\n/usr/share/doc/curl/changelog.Debian.gz",
 			},
 			packages: []*extractor.Package{
-				{Name: "curl", Metadata: dpkgmetadata.Metadata{}},
+				{Name: "curl", Metadata: &dpkgmetadata.Metadata{}},
 			},
 			wantPackages: []*extractor.Package{
 				{
 					Name:     "curl",
-					Metadata: dpkgmetadata.Metadata{},
+					Metadata: &dpkgmetadata.Metadata{},
 					ExploitabilitySignals: []*vex.PackageExploitabilitySignal{
 						{
 							Plugin:          dpkg.Name,
@@ -127,12 +126,12 @@ func TestAnnotate(t *testing.T) {
 				"curl:arm64.list": "/usr/\n/usr/share/\n/usr/share/doc/\n/usr/share/doc/curl/\n/usr/share/doc/curl/README.Debian\n/usr/share/doc/curl/changelog.Debian.gz",
 			},
 			packages: []*extractor.Package{
-				{Name: "curl", Metadata: dpkgmetadata.Metadata{Architecture: "arm64"}},
+				{Name: "curl", Metadata: &dpkgmetadata.Metadata{Architecture: "arm64"}},
 			},
 			wantPackages: []*extractor.Package{
 				{
 					Name:     "curl",
-					Metadata: dpkgmetadata.Metadata{Architecture: "arm64"},
+					Metadata: &dpkgmetadata.Metadata{Architecture: "arm64"},
 					ExploitabilitySignals: []*vex.PackageExploitabilitySignal{
 						{
 							Plugin:          dpkg.Name,
@@ -146,7 +145,7 @@ func TestAnnotate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
-			root := ""
+			root := t.TempDir()
 			if tt.infoContents != nil {
 				root = dpkgutil.SetupDPKGInfo(t, tt.infoContents, true)
 			}
@@ -154,7 +153,7 @@ func TestAnnotate(t *testing.T) {
 				tt.ctx = t.Context()
 			}
 			input := &annotator.ScanInput{
-				ScanRoot: scalibrfs.RealFSScanRoot(root),
+				ScanRoot: fakefs.RealFSScanRoot(t, root),
 			}
 			// Deep copy the packages to avoid modifying the original inventory that is used in other tests.
 			packages := copier.Copy(tt.packages).([]*extractor.Package)

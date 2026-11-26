@@ -15,40 +15,38 @@
 package wheelegg
 
 import (
+	"github.com/google/osv-scalibr/binary/proto/metadata"
 	pb "github.com/google/osv-scalibr/binary/proto/scan_result_go_proto"
 )
 
+func init() {
+	metadata.Register(ToStruct, ToProto)
+}
+
 // PythonPackageMetadata holds parsing information from a python egg or wheel package.
 type PythonPackageMetadata struct {
-	Author      string `json:"author"`
-	AuthorEmail string `json:"authorEmail"`
+	Author       string   `json:"author"`
+	AuthorEmail  string   `json:"authorEmail"`
+	RequiresDist []string `json:"requiresDist"`
 }
 
-// SetProto sets the PythonMetadata field in the Package proto.
-func (m *PythonPackageMetadata) SetProto(p *pb.Package) {
-	if m == nil {
-		return
-	}
-	if p == nil {
-		return
-	}
-
-	p.Metadata = &pb.Package_PythonMetadata{
-		PythonMetadata: &pb.PythonPackageMetadata{
-			Author:      m.Author,
-			AuthorEmail: m.AuthorEmail,
-		},
+// ToProto converts the PythonPackageMetadata struct to a PythonPackageMetadata proto.
+func ToProto(m *PythonPackageMetadata) *pb.PythonPackageMetadata {
+	return &pb.PythonPackageMetadata{
+		Author:       m.Author,
+		AuthorEmail:  m.AuthorEmail,
+		RequiresDist: m.RequiresDist,
 	}
 }
+
+// IsProtoable marks the struct as a metadata type.
+func (m *PythonPackageMetadata) IsProtoable() {}
 
 // ToStruct converts the PythonPackageMetadata proto to a Metadata struct.
 func ToStruct(m *pb.PythonPackageMetadata) *PythonPackageMetadata {
-	if m == nil {
-		return nil
-	}
-
 	return &PythonPackageMetadata{
-		Author:      m.GetAuthor(),
-		AuthorEmail: m.GetAuthorEmail(),
+		Author:       m.GetAuthor(),
+		AuthorEmail:  m.GetAuthorEmail(),
+		RequiresDist: m.GetRequiresDist(),
 	}
 }

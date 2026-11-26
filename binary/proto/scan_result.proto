@@ -18,6 +18,8 @@ syntax = "proto3";
 
 package scalibr;
 
+import "google/protobuf/any.proto";
+import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 import "proto/vulnerability.proto";
 
@@ -48,6 +50,7 @@ message Inventory {
   repeated GenericFinding generic_findings = 2;
   repeated Secret secrets = 3;
   repeated ContainerImageMetadata container_image_metadata = 5;
+  repeated SensitiveInformation sensitive_information = 7;
 }
 
 message ScanStatus {
@@ -78,6 +81,7 @@ message FileError {
 // PURL or CPE needs to be set, maybe both.
 message Package {
   reserved 3, 4, 10, 28, 35;
+  reserved 17 to 20, 29, 32, 43, 59, 71, 72;
   // Unique identifier for the package.
   string id = 60;
   // Human-readable name of the software, to be used for things like logging.
@@ -92,15 +96,21 @@ message Package {
   // Ecosystem - For software packages this corresponds to an OSV ecosystem
   // value, e.g. PyPI.
   string ecosystem = 27;
+  // TODO(b/400910349): Remove once integrators no longer use this.
+  repeated string locations = 2 [deprecated = true];
   // Paths or source of files related to the package.
-  repeated string locations = 2;
+  PackageLocation location = 68;
   // The names of the plugins that found this software. Set by the
   // core library.
   repeated string plugins = 49;
   // The additional data found in the package.
-  // LINT.IfChange
+  optional google.protobuf.Any metadata_any = 69;
+  // Deprecated: use metadata_any instead.
+  // TODO(#1847): Remove once the migration is complete.
   oneof metadata {
     PythonPackageMetadata python_metadata = 5;
+    PyprojectMetadata pyproject_metadata = 73;
+    RubyGemMetadata ruby_gem_metadata = 74;
     JavascriptPackageJSONMetadata javascript_metadata = 6;
     APKPackageMetadata apk_metadata = 7;
     DPKGPackageMetadata dpkg_metadata = 8;
@@ -128,7 +138,7 @@ message Package {
     CDXPackageMetadata cdx_metadata = 30;
     WindowsOSVersion windows_os_version_metadata = 33;
     HomebrewPackageMetadata homebrew_metadata = 42;
-    ChromeExtensionsMetadata chrome_extensions_metadata = 47;
+    BrowserExtensionsMetadata browser_extensions_metadata = 47;
     VSCodeExtensionsMetadata vscode_extensions_metadata = 46;
     PodmanMetadata podman_metadata = 50;
     DockerContainersMetadata docker_containers_metadata = 48;
@@ -141,8 +151,11 @@ message Package {
     ChocolateyPackageMetadata chocolatey_metadata = 62;
     MiseMetadata mise_metadata = 63;
     UnknownBinaryMetadata unknown_binary_metadata = 64;
+    BazelMavenMetadata bazel_maven_metadata = 65;
+    JavascriptDenoMetadata deno_metadata = 66;
+    SpackPackageMetadata spack_metadata = 67;
+    FreeBSDPackageMetadata freebsd_metadata = 75;
   }
-  // LINT.ThenChange(/binary/proto/package_metadata.go)
 
   // Signals to indicate that specific vulnerabilities are not applicable to
   // this package.
@@ -160,6 +173,18 @@ message Package {
   }
 
   optional ContainerImageMetadataIndexes container_image_metadata_indexes = 57;
+
+  // The ID of the parent package, if this package is a transitive dependency.
+  repeated string parent_ids = 70;
+}
+
+// Paths or source of files related to an extracted package.
+message PackageLocation {
+  // Main descriptor this package was extracted from (if applicable).
+  Location desc = 1;
+  // Other locations related to this package, e.g. files installed by the OS
+  // package.
+  repeated Location related = 2;
 }
 
 // Additional identifiers for source code software packages (e.g. NPM).
@@ -321,16 +346,62 @@ message GenericFindingTargetDetails {
 message PythonPackageMetadata {
   string author = 1;
   string author_email = 2;
+  repeated string requires_dist = 3;
+}
+
+message PyprojectMetadata {
+  // Whether the manifest is declaring the "dependencies" property as dynamic.
+  // When this is the case, the actual dependency list is found elsewhere,
+  // and the metadata should be considered incomplete.
+  bool has_dynamic_dependencies = 1;
+
+  message DependencyGroup {
+    string name = 1;
+    repeated string dependencies = 2;
+  }
+
+  DependencyGroup dependencies = 2;
+  repeated DependencyGroup optional_dependencies = 3;
+}
+
+// The additional data found in Ruby Gem packages.
+message RubyGemMetadata {
+  message Dependency {
+    message RequirementConstraint {
+      string operator = 1;
+      string version = 2;
+    }
+
+    string name = 1;
+    string type = 2;
+    repeated RequirementConstraint requirements = 3;
+    bool prerelease = 4;
+  }
+
+  repeated string authors = 1;
+  string description = 2;
+  string homepage = 3;
+  repeated string licenses = 4;
+  repeated Dependency dependencies = 5;
+  string platform = 6;
+  string summary = 7;
 }
 
 // The additional data found in npm packages.
 message JavascriptPackageJSONMetadata {
+  message Dependency {
+    string name = 1;
+    string version_required = 2;
+  }
+
   reserved 4;
 
   string author = 1;
   repeated string maintainers = 2;
   repeated string contributors = 3;
   PackageSource source = 5;
+  repeated Dependency dependencies = 6;
+  repeated string dep_groups = 7;
 }
 
 // The source of the package.
@@ -338,12 +409,23 @@ enum PackageSource {
   UNKNOWN = 0;
   // PUBLIC_REGISTRY is the public NPM registry.
   PUBLIC_REGISTRY = 1;
-  // OTHER is any other remote or private source (e.g. Github).
+  // OTHER is any other remote or private source (e.g. GitHub).
   // This is used for packages that are not found in the public NPM registry.
   OTHER = 2;
   // LOCAL is the local filesystem that stores the package versions.
   // This is used for when the package is locally-developed or -installed.
   LOCAL = 3;
+}
+
+// The additional data of a deno package.
+message JavascriptDenoMetadata {
+  oneof cdn {
+    bool from_denoland_cdn = 1;
+    bool from_unpkg_cdn = 2;
+    bool from_esm_cdn = 3;
+  }
+
+  string url = 4;
 }
 
 // The additional data found in APK packages.
@@ -466,6 +548,24 @@ message FlatpakPackageMetadata {
   string developer = 9;
 }
 
+// The additional data found in Spack packages.
+message SpackPackageMetadata {
+  string platform = 1;
+  string platform_os = 2;
+  string platform_architecture = 3;
+  string hash = 4;
+}
+
+// The additional data found in FreeBSD pkg packages.
+message FreeBSDPackageMetadata {
+  string package_name = 1;
+  string package_version = 2;
+  string origin = 3;
+  string arch = 4;
+  string os_id = 5;
+  string os_version_id = 6;
+}
+
 // The additional data found in MODULE packages.
 message KernelModuleMetadata {
   string package_name = 1;
@@ -515,10 +615,20 @@ message MacportsPackageMetadata {
   string package_revision = 3;
 }
 
+// An external reference to additional information about an SPDX package.
+message SPDXExternalReference {
+  string category = 1;
+  string ref_type = 2;
+  string locator = 3;
+  string comment = 4;
+}
+
 // The additional data for packages extracted from SPDX files.
 message SPDXPackageMetadata {
   Purl purl = 1;
   repeated string cpes = 2;
+  repeated SPDXExternalReference external_references = 3;
+  string spdx_id = 4;
 }
 
 // The additional data for packages extracted from CDX files.
@@ -532,6 +642,10 @@ message JavaArchiveMetadata {
   string artifact_id = 2;
   string group_id = 3;
   string sha1 = 4;
+
+  // dependencies and parent are populated only if extract_from_pom_xml is on.
+  repeated JavaLockfileDependency dependencies = 5;
+  JavaLockfileParent parent = 6;
 }
 
 // The additional data found in Java lockfiles.
@@ -540,6 +654,21 @@ message JavaLockfileMetadata {
   string group_id = 2;
   repeated string dep_group_vals = 3;
   bool is_transitive = 4;
+}
+
+message JavaLockfileDependency {
+  string group_id = 1;
+  string artifact_id = 2;
+  // Empty, if it came from a version requirement that could not be resolved.
+  string version_requirement = 3;
+  string scope = 4;
+  bool is_optional = 5;
+}
+
+message JavaLockfileParent {
+  string group_id = 1;
+  string artifact_id = 2;
+  string version = 3;
 }
 
 // The additional data for packages extracted by an OSV extractor wrapper.
@@ -610,8 +739,8 @@ message HomebrewPackageMetadata {
   repeated string mirrors = 3;
 }
 
-// The additional data found in Chrome extensions.
-message ChromeExtensionsMetadata {
+// The additional data found in Browser extensions.
+message BrowserExtensionsMetadata {
   string name = 1;
   string description = 2;
   string author_email = 3;
@@ -620,6 +749,7 @@ message ChromeExtensionsMetadata {
   string minimum_chrome_version = 6;
   repeated string permissions = 7;
   string update_url = 8;
+  string author = 9;
 }
 
 // The additional data found in VSCode extensions.
@@ -684,6 +814,14 @@ message NodeVersionMetadata {
   string nodejs_version = 2;
 }
 
+message BazelMavenMetadata {
+  string name = 1;
+  string group_id = 2;
+  string artifact_id = 3;
+  string version = 4;
+  string rule_name = 5;
+}
+
 message DockerPort {
   string ip = 1;
   uint32 private_port = 2;
@@ -718,7 +856,9 @@ message UnknownBinaryAttribution {
 message Secret {
   SecretData secret = 1;
   SecretStatus status = 2;
-  repeated Location locations = 3;
+  // TODO(b/400910349): Remove once integrators no longer use this.
+  repeated LocationLegacy locations = 3 [deprecated = true];
+  Location location = 4;
 }
 
 message SecretData {
@@ -787,6 +927,36 @@ message SecretData {
     ElasticCloudAPIKey elastic_cloud_api_key = 61;
     URLCredentials url_credentials = 62;
     SalesforceOAuth2ClientCredentials salesforce_oauth2_client_credentials = 63;
+    SalesforceOAuth2AccessToken salesforce_oauth2_access_token = 64;
+    SalesforceOAuth2RefreshCredentials salesforce_oauth2_refresh_credentials =
+        65;
+    MistralAPIKey mistral_api_key = 66;
+    CircleCIPersonalAccessToken circleci_personal_access_token = 67;
+    CircleCIProjectToken circleci_project_token = 68;
+    SquarePersonalAccessToken square_personal_access_token = 69;
+    SquareOAuthApplicationSecret square_oauth_application_secret = 70;
+    SalesforceOAuth2JWTCredentials salesforce_oauth2_jwt_credentials = 71;
+    SendGridAPIKey sendgrid_api_key = 72;
+    DenoPat deno_pat = 73;
+    HerokuSecretKey heroku_secret_key = 74;
+    NpmJsAccessToken npmjs_access_token = 75;
+    CloudflareAPIToken cloudflare_api_token = 76;
+    SupabasePAT supabase_pat = 77;
+    SupabaseProjectSecretKey supabase_project_secret_key = 78;
+    SupabaseServiceRoleJWT supabase_service_role_jwt = 79;
+    PackagistAPIKey packagist_api_key = 80;
+    PackagistAPISecret packagist_api_secret = 81;
+    PackagistOrgReadToken packagist_org_read_token = 82;
+    PackagistOrgUpdateToken packagist_org_update_token = 83;
+    PackagistUserUpdateToken packagist_user_update_token = 84;
+    PackagistConductorUpdateToken packagist_conductor_update_token = 85;
+    ComposerPackagistCredentials composer_http_basic_credentials = 86;
+    DiscordBotToken discord_bot_token = 87;
+    BitwardenOAuth2AccessToken bitwarden_oauth2_access_token = 88;
+    HTTPBasicAuth http_basic_auth = 89;
+    HTTPBearer http_bearer = 90;
+    HTTPCSRFToken http_csrf_token = 91;
+    HTTPCookie http_cookie = 92;
   }
 
   message GCPSAK {
@@ -826,6 +996,10 @@ message SecretData {
   }
 
   message PerplexityAPIKey {
+    string key = 1;
+  }
+
+  message MistralAPIKey {
     string key = 1;
   }
 
@@ -879,6 +1053,14 @@ message SecretData {
     string username = 2;
   }
 
+  message CloudflareAPIToken {
+    string token = 1;
+  }
+
+  message DenoPat {
+    string pat = 1;
+  }
+
   message GitlabPat {
     string pat = 1;
   }
@@ -912,6 +1094,10 @@ message SecretData {
   }
 
   message CratesIOAPIToken {
+    string token = 1;
+  }
+
+  message NpmJsAccessToken {
     string token = 1;
   }
 
@@ -952,10 +1138,9 @@ message SecretData {
   }
 
   message HashiCorpVaultAppRoleCredentials {
+    reserved 3;
     string role_id = 1;
     string secret_id = 2;
-    string id =
-        3;  // General ID field for uncertain UUID types when context is unclear
   }
 
   message GCPAPIKey {
@@ -996,6 +1181,19 @@ message SecretData {
 
   message StripeWebhookSecret {
     string key = 1;
+  }
+
+  message SupabasePAT {
+    string token = 1;
+  }
+
+  message SupabaseProjectSecretKey {
+    string key = 1;
+    string project_ref = 2;
+  }
+
+  message SupabaseServiceRoleJWT {
+    string token = 1;
   }
 
   message GCPOAuth2ClientCredentials {
@@ -1051,6 +1249,42 @@ message SecretData {
     string verifier_local_hash = 8;
   }
 
+  message ComposerPackagistCredentials {
+    string host = 1;
+    string username = 2;
+    string password = 3;
+  }
+
+  message PackagistAPIKey {
+    string key = 1;
+  }
+
+  message PackagistAPISecret {
+    string secret = 1;
+    string key =
+        2;  // Optional: populated when both key and secret are found together
+  }
+
+  message PackagistOrgReadToken {
+    string token = 1;
+    string repo_url = 2;  // Optional: populated when repo URL is found nearby
+  }
+
+  message PackagistOrgUpdateToken {
+    string token = 1;
+    string repo_url = 2;  // Optional: populated when repo URL is found nearby
+  }
+
+  message PackagistUserUpdateToken {
+    string token = 1;
+    string username = 2;  // Required for validation
+    string repo_url = 3;  // Optional: populated when repo URL is found nearby
+  }
+
+  message PackagistConductorUpdateToken {
+    string token = 1;
+  }
+
   message OnePasswordSecretKey {
     string key = 1;
   }
@@ -1098,8 +1332,34 @@ message SecretData {
     string key = 1;
   }
 
+  message DiscordBotToken {
+    string token = 1;
+  }
+
+  message HerokuSecretKey {
+    string key = 1;
+    // Optional enrichment fields populated when available
+    optional HerokuSecretKeyMetadata heroku_secret_key_metadata = 2;
+  }
+
+  message HerokuSecretKeyMetadata {
+    // expire_time is nil if the token doesn't expire, and never_expires becomes
+    // true
+    google.protobuf.Duration expire_time = 1;
+    bool never_expires = 2;
+  }
+
   message TelegramBotToken {
     string token = 1;
+  }
+
+  message SalesforceOAuth2AccessToken {
+    // Salesforce OAuth2 Access Token
+    string token = 1;
+  }
+
+  message SendGridAPIKey {
+    string key = 1;
   }
 
   message SalesforceOAuth2ClientCredentials {
@@ -1111,12 +1371,70 @@ message SecretData {
     string url = 3;
   }
 
+  message SalesforceOAuth2RefreshCredentials {
+    // Salesforce OAuth2 client ID
+    string id = 1;
+    // Salesforce OAuth2 client secret
+    string secret = 2;
+    // Salesforce OAuth2 Refresh Token
+    string refresh = 3;
+  }
+
+  message SalesforceOAuth2JWTCredentials {
+    // Salesforce OAuth2 client ID
+    string id = 1;
+    // Salesforce username (email)
+    string username = 2;
+    // Salesforce OAuth2 private key
+    string private_key = 3;
+  }
+
+  message BitwardenOAuth2AccessToken {
+    // Bitwarden OAuth2 Access Token
+    string client_id = 1;
+    string client_secret = 2;
+  }
+
+  message HTTPBasicAuth {
+    string username = 1;
+    string password = 2;
+  }
+
+  message HTTPBearer {
+    string value = 1;
+  }
+
+  message HTTPCSRFToken {
+    string value = 1;
+  }
+
+  message HTTPCookie {
+    map<string, string> values = 1;
+  }
+
   message CursorAPIKey {
     string key = 1;
   }
 
+  message CircleCIPersonalAccessToken {
+    string token = 1;
+  }
+
+  message CircleCIProjectToken {
+    string token = 1;
+  }
+
   message URLCredentials {
     string url = 1;
+  }
+
+  message SquarePersonalAccessToken {
+    string key = 1;
+  }
+
+  message SquareOAuthApplicationSecret {
+    string id = 1;   // OAuth Application ID (prefix: sq0idp-)
+    string key = 2;  // OAuth Application Secret (prefix: sq0csp-)
   }
 }
 
@@ -1141,7 +1459,9 @@ message SecretStatus {
   }
 }
 
-message Location {
+// The old Location message type used for secrets and sensitive data.
+// TODO(b/400910349): Deprecate this in favor of the Location message.
+message LocationLegacy {
   oneof location {
     Filepath filepath = 1;
     FilepathWithLayerDetails filepath_with_layer_details = 2;
@@ -1167,6 +1487,16 @@ message ContainerCommand {
   string command = 1;
 }
 
+message Location {
+  File file = 1;
+}
+
+message File {
+  string path = 1;
+  // The specific position of the inventory item inside the file.
+  int32 line_number = 2;
+}
+
 message ContainerImageMetadata {
   int32 index = 1;
   // Layers are ordered from the earliest to the latest.
@@ -1182,6 +1512,9 @@ message ContainerImageMetadata {
 
   // Key value map of OS info from /etc/os-release.
   map<string, string> os_info = 4;
+
+  // Labels of the container image.
+  map<string, string> labels = 5;
 }
 
 message BaseImageChain {
@@ -1213,4 +1546,44 @@ message LayerMetadata {
   // The index of the base image match within the
   // ContainerImageMetadata.base_image_chains field.
   int32 base_image_index = 6;
+  // Attributes attached to this layer by plugins.
+  repeated LayerAttribute attributes = 7;
+}
+
+// An attribute attached to a layer by a plugin.
+message LayerAttribute {
+  // The value of the attribute, with a meaning defined by the plugin.
+  string value = 1;
+  // The name of the plugin that generated this attribute.
+  string plugin = 2;
+}
+
+message InfoType {
+  string name = 1;
+  SensitivityLevel sensitivity = 2;
+}
+
+enum SensitivityLevel {
+  SENSITIVITY_LEVEL_UNSPECIFIED = 0;
+  SENSITIVITY_LEVEL_LOW = 1;
+  SENSITIVITY_LEVEL_UNKNOWN = 2;
+  SENSITIVITY_LEVEL_MODERATE = 3;
+  SENSITIVITY_LEVEL_HIGH = 4;
+}
+
+enum Likelihood {
+  LIKELIHOOD_UNSPECIFIED = 0;
+  LIKELIHOOD_VERY_UNLIKELY = 1;
+  LIKELIHOOD_UNLIKELY = 2;
+  LIKELIHOOD_POSSIBLE = 3;
+  LIKELIHOOD_LIKELY = 4;
+  LIKELIHOOD_VERY_LIKELY = 5;
+}
+
+// Sensitive Information found via the Veles sensitive information detectors.
+message SensitiveInformation {
+  InfoType info_type = 1;
+  Likelihood likelihood = 2;
+  bytes raw = 3;
+  Location location = 4;
 }

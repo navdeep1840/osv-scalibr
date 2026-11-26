@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/google/osv-scalibr/detector"
@@ -30,6 +30,8 @@ import (
 	"github.com/google/osv-scalibr/inventory"
 	"github.com/google/osv-scalibr/packageindex"
 	"github.com/google/osv-scalibr/plugin"
+
+	cpb "github.com/google/osv-scalibr/binary/proto/config_go_proto"
 )
 
 const (
@@ -41,8 +43,8 @@ const (
 type Detector struct{}
 
 // New returns a detector.
-func New() detector.Detector {
-	return &Detector{}
+func New(_ *cpb.PluginConfig) (detector.Detector, error) {
+	return &Detector{}, nil
 }
 
 // Name of the detector.
@@ -120,7 +122,7 @@ func (d Detector) Scan(ctx context.Context, scanRoot *scalibrfs.ScanRoot, px *pa
 	}
 
 	// Sort users to avoid non-determinism in the processing order from users map.
-	sort.Strings(problemUsers)
+	slices.Sort(problemUsers)
 	buf := new(strings.Builder)
 	_, _ = fmt.Fprintln(buf, "The following users have weak passwords:")
 	for _, u := range problemUsers {

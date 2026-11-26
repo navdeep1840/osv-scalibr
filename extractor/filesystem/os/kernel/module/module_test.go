@@ -28,7 +28,6 @@ import (
 	"github.com/google/osv-scalibr/extractor/filesystem/os/kernel/module"
 	modulemeta "github.com/google/osv-scalibr/extractor/filesystem/os/kernel/module/metadata"
 	"github.com/google/osv-scalibr/extractor/filesystem/simplefileapi"
-	scalibrfs "github.com/google/osv-scalibr/fs"
 	"github.com/google/osv-scalibr/inventory"
 	"github.com/google/osv-scalibr/stats"
 	"github.com/google/osv-scalibr/testing/fakefs"
@@ -163,7 +162,7 @@ func TestExtract(t *testing.T) {
 						OSVersionID:                    "22.04",
 						PackageAuthor:                  "Yin Kangkai (kangkai.yin@intel.com)",
 					},
-					Locations: []string{"testdata/valid"},
+					Location: extractor.LocationFromPath("testdata/valid"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -183,7 +182,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename:              "jammy",
 						OSVersionID:                    "22.04",
 					},
-					Locations: []string{"testdata/valid_no_vers_deps_auth"},
+					Location: extractor.LocationFromPath("testdata/valid_no_vers_deps_auth"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -212,7 +211,7 @@ func TestExtract(t *testing.T) {
 						OSID:                           "ubuntu",
 						PackageAuthor:                  "Yin Kangkai (kangkai.yin@intel.com)",
 					},
-					Locations: []string{"testdata/valid"},
+					Location: extractor.LocationFromPath("testdata/valid"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -231,7 +230,7 @@ func TestExtract(t *testing.T) {
 						PackageSourceVersionIdentifier: "69B4F4432F52708A284377E",
 						PackageAuthor:                  "Yin Kangkai (kangkai.yin@intel.com)",
 					},
-					Locations: []string{"testdata/valid"},
+					Location: extractor.LocationFromPath("testdata/valid"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -267,7 +266,7 @@ func TestExtract(t *testing.T) {
 			}
 
 			input := &filesystem.ScanInput{
-				FS: scalibrfs.DirFS(d), Path: tt.path, Reader: r, Root: d, Info: info,
+				FS: fakefs.DirFS(t, d), Path: tt.path, Reader: r, Root: d, Info: info,
 			}
 
 			got, err := e.Extract(t.Context(), input)

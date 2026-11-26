@@ -40,15 +40,27 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/textproto"
+	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/google/osv-scalibr/veles"
 	"github.com/google/osv-scalibr/veles/secrets/urlcreds"
+	"github.com/google/osv-scalibr/veles/velestest"
 	"golang.org/x/crypto/ssh"
 )
+
+func TestAcceptValidator(t *testing.T) {
+	velestest.AcceptValidator(
+		t,
+		urlcreds.NewValidator(),
+		velestest.WithMalformedSecrets(urlcreds.Credentials{FullURL: ":::not-a-valid-url"}),
+		velestest.WithTrueNegatives(urlcreds.Credentials{FullURL: "http://admin:pass@domain.com/resource"}),
+		velestest.WithBrokenTransport(func(v *urlcreds.Validator) { v.Client = velestest.BrokenClient }),
+		velestest.WithoutOnline[urlcreds.Credentials](),
+	)
+}
 
 func TestValidator(t *testing.T) {
 	basicAuthHTTPSvr := mockBasicAuthHTTPServer(t, "admin", "pass")
@@ -58,10 +70,9 @@ func TestValidator(t *testing.T) {
 	sftpAddr := mockSSHServer(t, "sshuser", "sshpass")
 
 	cases := []struct {
-		name    string
-		url     string
-		want    veles.ValidationStatus
-		wantErr error
+		name string
+		url  string
+		want veles.ValidationStatus
 	}{
 		// HTTP Tests
 		{
@@ -123,13 +134,81 @@ func TestValidator(t *testing.T) {
 			v := urlcreds.NewValidator()
 			got, err := v.Validate(t.Context(), urlcreds.Credentials{FullURL: tt.url})
 
-			if !cmp.Equal(tt.wantErr, err, cmpopts.EquateErrors()) {
-				t.Fatalf("Validate() error: %v, want %v", err, tt.wantErr)
+			if err != nil {
+				t.Fatalf("Validate(): %v", err)
 			}
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("Validate() diff (-want +got):\n%s", diff)
 			}
 		})
+	}
+}
+
+func TestValidatorFTPRejectsLineBreaks(t *testing.T) {
+	cases := []struct {
+		name string
+		user string
+		pass string
+	}{
+		{name: "username_cr", user: "sensitive%0DNOOP", pass: "sensitive"},
+		{name: "username_lf", user: "sensitive%0ANOOP", pass: "sensitive"},
+		{name: "username_crlf", user: "sensitive%0D%0ANOOP", pass: "sensitive"},
+		{name: "password_cr", user: "sensitive", pass: "sensitive%0DNOOP"},
+		{name: "password_lf", user: "sensitive", pass: "sensitive%0ANOOP"},
+		{name: "password_crlf", user: "sensitive", pass: "sensitive%0D%0ANOOP"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			l, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { l.Close() })
+			connected := make(chan bool, 1)
+			go func() {
+				conn, err := l.Accept()
+				if err != nil {
+					connected <- false
+					return
+				}
+				conn.Close()
+				connected <- true
+			}()
+
+			v := urlcreds.NewValidator()
+			got, err := v.Validate(t.Context(), urlcreds.Credentials{
+				FullURL: fmt.Sprintf("ftp://%s:%s@%s/files", tc.user, tc.pass, l.Addr()),
+			})
+			l.Close()
+			if <-connected {
+				t.Error("Validate() connected despite line breaks in credentials")
+			}
+			if got != veles.ValidationFailed {
+				t.Errorf("Validate() status = %v, want %v", got, veles.ValidationFailed)
+			}
+			if err == nil {
+				t.Error("Validate() returned no error for line breaks in credentials")
+			} else if strings.Contains(err.Error(), "sensitive") {
+				t.Error("Validate() error exposed credentials")
+			}
+		})
+	}
+}
+
+func TestValidatorFTPEncodedCredentials(t *testing.T) {
+	addr := mockFTPServer(t, "user@name", "pass:%word")
+	u := &url.URL{
+		Scheme: "ftp",
+		Host:   addr,
+		User:   url.UserPassword("user@name", "pass:%word"),
+	}
+	v := urlcreds.NewValidator()
+	got, err := v.Validate(t.Context(), urlcreds.Credentials{FullURL: u.String()})
+	if err != nil {
+		t.Fatalf("Validate(): %v", err)
+	}
+	if got != veles.ValidationValid {
+		t.Errorf("Validate() status = %v, want %v", got, veles.ValidationValid)
 	}
 }
 

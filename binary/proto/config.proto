@@ -37,7 +37,11 @@ message PluginConfig {
   // If true, do not try to create google.DefaultClient for Artifact Registry
   // during dependency resolution.
   bool disable_google_auth = 4;
-  // The user agent to use when making requests.
+  // The user agent to use when running SCALIBR as a CLI binary. If specified,
+  // the CLI passes this value to initialize the client factory.
+  // When calling SCALIBR as a Go library, this field is ignored; instead, the
+  // caller should configure the user agent directly in their ClientFactories
+  // implementation.
   string user_agent = 5;
 
   // Config values that only apply to a single plugin.
@@ -45,6 +49,7 @@ message PluginConfig {
 }
 
 message PluginSpecificConfig {
+  reserved 48 to 56, 59 to 61, 66 to 67, 79 to 80;
   oneof config {
     GoBinaryConfig go_binary = 1;
     GovulncheckConfig govulncheck = 2;
@@ -63,6 +68,7 @@ message PluginSpecificConfig {
     SnapConfig snap = 15;
     KernelModuleConfig kernel_module = 16;
     VmlinuzConfig vmlinuz = 17;
+    BazelAspectConfig bazel_aspect = 81;
     PacmanConfig pacman = 18;
     PortageConfig portage = 19;
     FlatpakConfig flatpak = 20;
@@ -82,7 +88,7 @@ message PluginSpecificConfig {
     SwiftPodfileLockConfig swift_podfile_lock = 34;
     ElixirMixLockConfig elixir_mix_lock = 35;
     HaskellStacklockConfig haskell_stacklock = 36;
-    HaskellCabalConfig haskell_cabal = 37;
+    HaskellCabalConfig haskell_cabal = 37 [deprecated = true];
     JavaArchiveConfig java_archive = 38;
     JavascriptPackageJsonConfig javascript_package_json = 39;
     JavascriptPackageLockJsonConfig javascript_package_lock_json = 40;
@@ -93,12 +99,45 @@ message PluginSpecificConfig {
     GoModConfig go_mod = 45;
     WordpressPluginsConfig wordpress_plugins = 46;
     MariadbConfig mariadb = 47;
+    DotnetPaketConfig dotnet_paket = 77;
+    OSVLocalConfig osvlocal = 57;
+    CodeServerConfig code_server = 58;
+    DenoJsonConfig denojson = 62;
+    DenoTSSourceConfig denotssource = 63;
+    QCOW2Config qcow2 = 64;
+    PerlCPANConfig cpan = 65;
+    PythonRequirementsTransitiveConfig python_requirements_transitive = 68;
+    SpackConfig spack = 69;
+    CsProjConfig csproj = 70;
+    NugetCPMConfig nuget_cpm = 71;
+    OSVDevConfig osvdev = 72;
+    HCPIdentityConfig hcp_identity = 73;
+    HerokuExpirationConfig heroku_expiration = 74;
+    HuggingfaceMetaConfig huggingface_meta = 75;
+    ContainerdRuntimeConfig containerd_runtime = 76;
+    DotnetProjectAssetsJsonConfig dotnet_project_assets_json = 78;
+    RubyGemConfig ruby_gem = 82;
+    ZigBuildZigZonConfig buildzigzon = 83;
+    UbuntuBinaryToSourceConfig ubuntu_binary_to_source = 84;
+    FreeBSDConfig freebsd = 85;
+    HaskellCabalProjectFreezeConfig haskell_cabal_project_freeze = 86;
+    HaskellCabalConfConfig haskell_cabal_conf = 87;
+    GoWorkConfig go_work = 88;
   }
+}
+
+message BazelAspectConfig {
+  // The Bazel target to evaluate. Defaults to //...
+  string target = 1;
+  // If true, passes --keep_going to Bazel. Defaults to true.
+  optional bool keep_going = 2;
 }
 
 message GoBinaryConfig {
   // Enables extracting the module version from the Go binary content.
   bool version_from_content = 1;
+  // Enables extracting the module dependency relations from the Go binary.
+  bool extract_dependency_relations = 2;
 }
 
 message GovulncheckConfig {
@@ -112,6 +151,30 @@ message ArchiveConfig {
   // If set, this overrides the global max_file_size_bytes configuration
   // for this specific plugin.
   int64 max_file_size_bytes = 1;
+  // Maximum fraction of available free temp storage allowed for extraction
+  // (e.g. 0.8 for 80%). If set, must be in the range (0.0, 1.0].
+  // If unset or set to invalid value, this value defaults to 0.0, meaning free
+  // space checking is disabled.
+  // Note: Free space checking is only supported on Linux. This has no effect on
+  // non-linux based platforms.
+  double max_free_space_usage_ratio = 2;
+}
+
+message DenoJsonConfig {
+  // The maximum file size the plugin will process.
+  // If set, this overrides the global max_file_size_bytes configuration
+  // for this specific plugin.
+  int64 max_file_size_bytes = 1;
+}
+
+message DenoTSSourceConfig {
+  // The maximum file size the plugin will process.
+  // If set, this overrides the global max_file_size_bytes configuration
+  // for this specific plugin.
+  int64 max_file_size_bytes = 1;
+  // The maximum depth level the plugin will search for deno.json files in the
+  // parent directories. If set, this overrides the default value of 2.
+  int32 deno_json_search_depth_level = 2;
 }
 
 message OVAConfig {
@@ -119,6 +182,13 @@ message OVAConfig {
   // If set, this overrides the global max_file_size_bytes configuration
   // for this specific plugin.
   int64 max_file_size_bytes = 1;
+  // Maximum fraction of available free temp storage allowed for extraction
+  // (e.g. 0.8 for 80%). If set, must be in the range (0.0, 1.0].
+  // If unset or set to invalid value, this value defaults to 0.0, meaning free
+  // space checking is disabled.
+  // Note: Free space checking is only supported on Linux. This has no effect on
+  // non-linux based platforms.
+  double max_free_space_usage_ratio = 2;
 }
 
 message VDIConfig {
@@ -142,6 +212,13 @@ message ChocolateyConfig {
   int64 max_file_size_bytes = 1;
 }
 
+message PerlCPANConfig {
+  // The maximum file size the plugin will process.
+  // If set, this overrides the global max_file_size_bytes configuration
+  // for this specific plugin.
+  int64 max_file_size_bytes = 1;
+}
+
 message HashiCorpVaultValidatorConfig {
   // The URL of the Vault server to connect to.
   // https://developer.hashicorp.com/vault
@@ -156,6 +233,19 @@ message SDPInspectConfig {
 
 message POMXMLNetConfig {
   // The URL of the upstream Maven registry.
+  // Supports the format "MIRROR_URL[ORIGIN_URL1,ORIGIN_URL2,...]" to replace
+  // specific origin repository URLs found in POMs with the mirror URL. If [...]
+  // is omitted, only the default registry is set without replacing POM URLs.
+  string upstream_registry = 1;
+  // If true, use deps.dev requirements API for dependency resolution.
+  bool deps_dev_requirements = 2;
+  // If true, enable in-memory caching of decoded Maven projects, dependency
+  // management, versions, and requirements during dependency resolution.
+  bool enable_cache = 3;
+}
+
+message PythonRequirementsTransitiveConfig {
+  // The URL of the upstream PyPI registry.
   string upstream_registry = 1;
   // If true, use deps.dev requirements API for dependency resolution.
   bool deps_dev_requirements = 2;
@@ -169,6 +259,9 @@ message DpkgConfig {
   // If set, this overrides the global max_file_size_bytes configuration
   // for this specific plugin.
   int64 max_file_size_bytes = 2;
+  // Determines if packages should be extracted from nested root directories
+  // (e.g. chroot environments like `<prefix>/var/lib/dpkg/status`).
+  bool include_nested_roots = 3;
 }
 
 message RpmConfig {
@@ -236,11 +329,23 @@ message FlatpakConfig {
   int64 max_file_size_bytes = 1;
 }
 
+message SpackConfig {
+  // The maximum file size the plugin will process.
+  // If set, this overrides the global max_file_size_bytes configuration
+  // for this specific plugin.
+  int64 max_file_size_bytes = 1;
+}
+
 message MacAppsConfig {
   // The maximum file size the plugin will process.
   // If set, this overrides the global max_file_size_bytes configuration
   // for this specific plugin.
   int64 max_file_size_bytes = 1;
+  // Determines if packages should be extracted from directories
+  // other than /Applications.
+  // This can lead to false positives, as apps from some directories
+  // like /Library may not be actually installed.
+  bool allow_custom_directories = 2;
 }
 
 message PodmanConfig {
@@ -284,6 +389,35 @@ message DotnetDepsJsonConfig {
   int64 max_file_size_bytes = 1;
 }
 
+message CsProjConfig {
+  // The maximum file size the plugin will process.
+  // If set, this overrides the global max_file_size_bytes configuration
+  // for this specific plugin.
+  int64 max_file_size_bytes = 1;
+}
+
+message NugetCPMConfig {
+  // The maximum file size the plugin will process.
+  // If set, this overrides the global max_file_size_bytes configuration
+  // for this specific plugin.
+  int64 max_file_size_bytes = 1;
+}
+
+message HuggingfaceMetaConfig {
+  // The base URL of the Huggingface API.
+  string base_url = 1;
+}
+
+message HerokuExpirationConfig {
+  // The base URL of the Heroku API.
+  string base_url = 1;
+}
+
+message HCPIdentityConfig {
+  // The base URL of the HCP API.
+  string base_url = 1;
+}
+
 message DotnetPackagesConfigConfig {
   // The maximum file size the plugin will process.
   // If set, this overrides the global max_file_size_bytes configuration
@@ -305,11 +439,42 @@ message DotnetPeConfig {
   int64 max_file_size_bytes = 1;
 }
 
+message DotnetPaketConfig {
+  // The maximum file size the plugin will process.
+  // If set, this overrides the global max_file_size_bytes configuration
+  // for this specific plugin.
+  int64 max_file_size_bytes = 1;
+}
+
+message DotnetProjectAssetsJsonConfig {
+  // The maximum file size the plugin will process.
+  // If set, this overrides the global max_file_size_bytes configuration
+  // for this specific plugin.
+  int64 max_file_size_bytes = 1;
+}
+
 message GemspecConfig {
   // The maximum file size the plugin will process.
   // If set, this overrides the global max_file_size_bytes configuration
   // for this specific plugin.
   int64 max_file_size_bytes = 1;
+}
+
+message RubyGemConfig {
+  // The maximum file size the plugin will process.
+  // If set, this overrides the global max_file_size_bytes configuration
+  // for this specific plugin.
+  int64 max_file_size_bytes = 1;
+  // If set, extract additional packages for each declared runtime dependency.
+  bool include_dependencies = 2;
+}
+
+message ZigBuildZigZonConfig {
+  // The maximum file size the plugin will process.
+  // If set, this overrides the global max_file_size_bytes configuration
+  // for this specific plugin.
+  int64 max_file_size_bytes = 1;
+  bool scan_dependencies = 2;
 }
 
 message CargoAuditableConfig {
@@ -350,6 +515,22 @@ message HaskellStacklockConfig {
 }
 
 message HaskellCabalConfig {
+  option deprecated = true;
+
+  // The maximum file size the plugin will process.
+  // If set, this overrides the global max_file_size_bytes configuration
+  // for this specific plugin.
+  int64 max_file_size_bytes = 1;
+}
+
+message HaskellCabalProjectFreezeConfig {
+  // The maximum file size the plugin will process.
+  // If set, this overrides the global max_file_size_bytes configuration
+  // for this specific plugin.
+  int64 max_file_size_bytes = 1;
+}
+
+message HaskellCabalConfConfig {
   // The maximum file size the plugin will process.
   // If set, this overrides the global max_file_size_bytes configuration
   // for this specific plugin.
@@ -371,6 +552,10 @@ message JavaArchiveConfig {
   // Configures if JAR files should be extracted from filenames when no
   // "pom.properties" is present.
   optional bool extract_from_filename = 5;
+  // Enable extraction from embedded "pom.xml", rather than "pom.properties".
+  // These carry more complete information, but also require more processing,
+  // which could fail. Conversely, "pom.properties" is very lightweight.
+  optional bool extract_from_pom_xml = 7;
   // Configures if JAR files should be hashed with base64(sha1()).
   optional bool hash_jars = 6;
 }
@@ -380,8 +565,9 @@ message JavascriptPackageJsonConfig {
   // If set, this overrides the global max_file_size_bytes configuration
   // for this specific plugin.
   int64 max_file_size_bytes = 1;
-  // Specifies whether to extract dependencies.
+  // If set, extract additional packages for each declared dependency.
   bool include_dependencies = 2;
+  reserved 3;
 }
 
 message JavascriptPackageLockJsonConfig {
@@ -417,11 +603,17 @@ message PythonWheelEggConfig {
   // If set, this overrides the global max_file_size_bytes configuration
   // for this specific plugin.
   int64 max_file_size_bytes = 1;
+  reserved 2;
 }
 
 message GoModConfig {
   // Excludes indirect dependencies from the extraction.
   bool exclude_indirect = 1;
+  // Includes the Go standard library (stdlib) version from the go or toolchain
+  // directive as a dependency.
+  // Off by default: the go/toolchain directive is a minimum Go version, not the
+  // build toolchain, so matching it yields stdlib false positives.
+  bool include_stdlib = 2;
 }
 
 message WordpressPluginsConfig {
@@ -438,4 +630,63 @@ message MariadbConfig {
   int64 max_file_size_bytes = 1;
   // Tells the extractor to follow the include or not.
   optional bool follow_include = 2;
+}
+
+message OSVLocalConfig {
+  // If true, OSV databases will be downloaded as needed for enriching
+  bool download = 1;
+  // The path that the downloaded zip files should be stored at
+  string local_path = 2;
+  // The remote host to download zip files from, which will be suffixed with
+  // "/<ecosystem>/all.zip"
+  string remote_host = 3;
+}
+
+message OSVDevConfig {
+  // Timeout for the initial batch query to OSV.dev.
+  int64 initial_query_timeout_seconds = 1;
+}
+
+message UbuntuBinaryToSourceConfig {
+  // The base URL of the OSV.dev API used to map Ubuntu binary package names to
+  // source package names. Defaults to https://api.osv.dev.
+  string base_url = 1;
+  // Timeout in seconds for querying the OSV.dev Ubuntu binary-to-source
+  // mapping API. Defaults to 300 (5 minutes).
+  int64 timeout_seconds = 2;
+}
+
+message CodeServerConfig {
+  // The URL of the Code-Server instance to check for authentication.
+  string remote = 1;
+  // Timeout in milliseconds for the HTTP client.
+  int64 client_timeout_millis = 2;
+}
+
+message QCOW2Config {
+  // The maximum file size the plugin will process.
+  // If set, this overrides the global max_file_size_bytes configuration
+  // for this specific plugin.
+  int64 max_file_size_bytes = 1;
+  // The password the plugin requires to extract the encrypted .qcow2 file
+  string password = 2;
+}
+
+message ContainerdRuntimeConfig {
+  // The local path to the containerd socket.
+  string socket_addr = 1;
+}
+message FreeBSDConfig {
+  // The maximum file size the plugin will process.
+  // If set, this overrides the global max_file_size_bytes configuration
+  // for this specific plugin.
+  int64 max_file_size_bytes = 1;
+}
+
+message GoWorkConfig {
+  // Includes the Go standard library (stdlib) version from the go or toolchain
+  // directive as a dependency.
+  // Off by default: the go/toolchain directive is a minimum Go version, not the
+  // build toolchain, so matching it yields stdlib false positives.
+  bool include_stdlib = 1;
 }

@@ -19,8 +19,12 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/google/osv-scalibr/veles"
 	"github.com/google/osv-scalibr/veles/secrets/anthropicapikey"
+	sv "github.com/google/osv-scalibr/veles/secrets/common/simplevalidate"
+	"github.com/google/osv-scalibr/veles/velestest"
 )
 
 const (
@@ -61,13 +65,26 @@ func mockAnthropicWorkspaceServer(t *testing.T, expectedKey string, statusCode i
 	return server
 }
 
+func TestAcceptMWorkspaceValidator(t *testing.T) {
+	velestest.AcceptValidator(
+		t,
+		anthropicapikey.NewWorkspaceValidator(),
+		velestest.WithTrueNegatives(anthropicapikey.WorkspaceAPIKey{
+			Key: "sk-ant-admin01-osvscalibr-invalid0000000000000000000000000000000000000000000000",
+		}),
+		velestest.WithBrokenTransport(func(v *sv.Validator[anthropicapikey.WorkspaceAPIKey]) {
+			v.HTTPC = velestest.BrokenClient
+		}),
+	)
+}
+
 func TestWorkspaceValidator(t *testing.T) {
 	cases := []struct {
 		name         string
 		statusCode   int
 		responseBody string
 		want         veles.ValidationStatus
-		expectError  bool
+		wantErr      error
 	}{
 		{
 			name:       "valid_workspace_key",
@@ -103,8 +120,8 @@ func TestWorkspaceValidator(t *testing.T) {
 					"message": "Your account does not have permission to perform this action"
 				}
 			}`,
-			want:        veles.ValidationFailed,
-			expectError: true,
+			want:    veles.ValidationFailed,
+			wantErr: cmpopts.AnyError,
 		},
 		{
 			name:       "workspace_rate_limited_but_likely_valid",
@@ -126,8 +143,8 @@ func TestWorkspaceValidator(t *testing.T) {
 					"message": "Internal server error"
 				}
 			}`,
-			want:        veles.ValidationFailed,
-			expectError: true,
+			want:    veles.ValidationFailed,
+			wantErr: cmpopts.AnyError,
 		},
 	}
 
@@ -142,24 +159,14 @@ func TestWorkspaceValidator(t *testing.T) {
 			validator.HTTPC = server.Client()
 			validator.Endpoint = server.URL + anthropicapikey.AnthropicWorkspacesEndpoint
 
-			// Create test key
 			key := anthropicapikey.WorkspaceAPIKey{Key: workspaceValidatorTestKey}
 
-			// Test validation
 			got, err := validator.Validate(t.Context(), key)
 
-			// Check error expectation
-			if tc.expectError {
-				if err == nil {
-					t.Errorf("Validate() expected error, got nil")
-				}
-			} else {
-				if err != nil {
-					t.Errorf("Validate() unexpected error: %v", err)
-				}
+			if diff := cmp.Diff(tc.wantErr, err, cmpopts.EquateErrors()); diff != "" {
+				t.Errorf("Validate() error mismatch (-want +got):\n%s", diff)
 			}
 
-			// Check validation status
 			if got != tc.want {
 				t.Errorf("Validate() = %v, want %v", got, tc.want)
 			}

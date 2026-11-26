@@ -29,7 +29,6 @@ import (
 	"github.com/google/osv-scalibr/extractor/filesystem/os/flatpak"
 	flatpakmeta "github.com/google/osv-scalibr/extractor/filesystem/os/flatpak/metadata"
 	"github.com/google/osv-scalibr/extractor/filesystem/simplefileapi"
-	scalibrfs "github.com/google/osv-scalibr/fs"
 	"github.com/google/osv-scalibr/inventory"
 	"github.com/google/osv-scalibr/purl"
 	"github.com/google/osv-scalibr/stats"
@@ -173,7 +172,7 @@ func TestExtract(t *testing.T) {
 						OSName:         "Debian GNU/Linux",
 						Developer:      "The GIMP team",
 					},
-					Locations: []string{"testdata/valid.xml"},
+					Location: extractor.LocationFromPath("testdata/valid.xml"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -197,7 +196,7 @@ func TestExtract(t *testing.T) {
 						OSName:         "Debian GNU/Linux",
 						Developer:      "The GIMP team",
 					},
-					Locations: []string{"testdata/noname.xml"},
+					Location: extractor.LocationFromPath("testdata/noname.xml"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -241,7 +240,7 @@ func TestExtract(t *testing.T) {
 				t.Fatalf("Failed to stat test file: %v", err)
 			}
 
-			input := &filesystem.ScanInput{FS: scalibrfs.DirFS(d), Path: tt.path, Reader: r, Root: d, Info: info}
+			input := &filesystem.ScanInput{FS: fakefs.DirFS(t, d), Path: tt.path, Reader: r, Root: d, Info: info}
 
 			cfg := tt.cfg
 			if cfg == nil {

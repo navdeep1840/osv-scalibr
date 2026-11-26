@@ -21,51 +21,77 @@ import (
 	"slices"
 
 	"github.com/google/osv-scalibr/extractor/filesystem"
-	"github.com/google/osv-scalibr/extractor/filesystem/containers/containerd"
+	"github.com/google/osv-scalibr/extractor/filesystem/bazel/aspect"
 	"github.com/google/osv-scalibr/extractor/filesystem/containers/dockerbaseimage"
 	"github.com/google/osv-scalibr/extractor/filesystem/containers/dockercomposeimage"
 	"github.com/google/osv-scalibr/extractor/filesystem/containers/k8simage"
 	"github.com/google/osv-scalibr/extractor/filesystem/containers/podman"
 	"github.com/google/osv-scalibr/extractor/filesystem/embeddedfs/archive"
 	"github.com/google/osv-scalibr/extractor/filesystem/embeddedfs/ova"
+	"github.com/google/osv-scalibr/extractor/filesystem/embeddedfs/qcow2"
 	"github.com/google/osv-scalibr/extractor/filesystem/embeddedfs/vdi"
 	"github.com/google/osv-scalibr/extractor/filesystem/embeddedfs/vmdk"
 	"github.com/google/osv-scalibr/extractor/filesystem/ffa/unknownbinariesextr"
+	"github.com/google/osv-scalibr/extractor/filesystem/language/clojure/projectclj"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/cpp/conanlock"
+	"github.com/google/osv-scalibr/extractor/filesystem/language/dart/packageconfig"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/dart/pubspec"
+	"github.com/google/osv-scalibr/extractor/filesystem/language/dotnet/csproj"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/dotnet/depsjson"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/dotnet/dotnetpe"
+	"github.com/google/osv-scalibr/extractor/filesystem/language/dotnet/nugetcpm"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/dotnet/packagesconfig"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/dotnet/packageslockjson"
+	"github.com/google/osv-scalibr/extractor/filesystem/language/dotnet/paketdependencies"
+	"github.com/google/osv-scalibr/extractor/filesystem/language/dotnet/paketlock"
+	"github.com/google/osv-scalibr/extractor/filesystem/language/dotnet/projectassetsjson"
 	elixir "github.com/google/osv-scalibr/extractor/filesystem/language/elixir/mixlock"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/erlang/mixlock"
+	"github.com/google/osv-scalibr/extractor/filesystem/language/erlang/rebarlock"
+	"github.com/google/osv-scalibr/extractor/filesystem/language/gleam/gleamtoml"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/golang/gobinary"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/golang/gomod"
-	"github.com/google/osv-scalibr/extractor/filesystem/language/haskell/cabal"
+	"github.com/google/osv-scalibr/extractor/filesystem/language/golang/gowork"
+	"github.com/google/osv-scalibr/extractor/filesystem/language/golang/vendormodules"
+	"github.com/google/osv-scalibr/extractor/filesystem/language/haskell/cabalconf"
+	"github.com/google/osv-scalibr/extractor/filesystem/language/haskell/cabalprojectfreeze"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/haskell/stacklock"
 	javaarchive "github.com/google/osv-scalibr/extractor/filesystem/language/java/archive"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/java/gradlelockfile"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/java/gradleverificationmetadataxml"
+	"github.com/google/osv-scalibr/extractor/filesystem/language/java/gradleversioncatalog"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/java/pomxml"
-	"github.com/google/osv-scalibr/extractor/filesystem/language/java/pomxmlnet"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/javascript/bunlock"
+	"github.com/google/osv-scalibr/extractor/filesystem/language/javascript/denojson"
+	"github.com/google/osv-scalibr/extractor/filesystem/language/javascript/denotssource"
+	"github.com/google/osv-scalibr/extractor/filesystem/language/javascript/electronasar"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/javascript/packagejson"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/javascript/packagelockjson"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/javascript/pnpmlock"
+	"github.com/google/osv-scalibr/extractor/filesystem/language/javascript/vsix"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/javascript/yarnlock"
+	"github.com/google/osv-scalibr/extractor/filesystem/language/julia/manifesttoml"
+	"github.com/google/osv-scalibr/extractor/filesystem/language/julia/projecttoml"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/lua/luarocks"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/nim/nimble"
+	"github.com/google/osv-scalibr/extractor/filesystem/language/ocaml/opam"
+	"github.com/google/osv-scalibr/extractor/filesystem/language/perl/cpan"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/php/composerlock"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/python/condameta"
+	"github.com/google/osv-scalibr/extractor/filesystem/language/python/ipythoninstall"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/python/pdmlock"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/python/pipfilelock"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/python/poetrylock"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/python/pylock"
+	"github.com/google/osv-scalibr/extractor/filesystem/language/python/pyprojecttoml"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/python/requirements"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/python/setup"
+	"github.com/google/osv-scalibr/extractor/filesystem/language/python/setupcfg"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/python/uvlock"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/python/wheelegg"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/r/renvlock"
+	"github.com/google/osv-scalibr/extractor/filesystem/language/r/rpkg"
+	"github.com/google/osv-scalibr/extractor/filesystem/language/ruby/gem"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/ruby/gemfilelock"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/ruby/gemspec"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/rust/cargoauditable"
@@ -73,15 +99,21 @@ import (
 	"github.com/google/osv-scalibr/extractor/filesystem/language/rust/cargotoml"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/swift/packageresolved"
 	"github.com/google/osv-scalibr/extractor/filesystem/language/swift/podfilelock"
-	chromeextensions "github.com/google/osv-scalibr/extractor/filesystem/misc/chrome/extensions"
+	"github.com/google/osv-scalibr/extractor/filesystem/language/zig/buildzigzon"
+	"github.com/google/osv-scalibr/extractor/filesystem/misc/bazelmaven"
+	browserextensions "github.com/google/osv-scalibr/extractor/filesystem/misc/browser/extensions"
+	"github.com/google/osv-scalibr/extractor/filesystem/misc/githubactions"
+	"github.com/google/osv-scalibr/extractor/filesystem/misc/gitrepo"
 	"github.com/google/osv-scalibr/extractor/filesystem/misc/netscaler"
 	"github.com/google/osv-scalibr/extractor/filesystem/misc/vscodeextensions"
 	wordpressplugins "github.com/google/osv-scalibr/extractor/filesystem/misc/wordpress/plugins"
 	"github.com/google/osv-scalibr/extractor/filesystem/os/apk"
+	"github.com/google/osv-scalibr/extractor/filesystem/os/chisel"
 	"github.com/google/osv-scalibr/extractor/filesystem/os/chocolatey"
 	"github.com/google/osv-scalibr/extractor/filesystem/os/cos"
 	"github.com/google/osv-scalibr/extractor/filesystem/os/dpkg"
 	"github.com/google/osv-scalibr/extractor/filesystem/os/flatpak"
+	"github.com/google/osv-scalibr/extractor/filesystem/os/freebsd"
 	"github.com/google/osv-scalibr/extractor/filesystem/os/homebrew"
 	"github.com/google/osv-scalibr/extractor/filesystem/os/kernel/module"
 	"github.com/google/osv-scalibr/extractor/filesystem/os/kernel/vmlinuz"
@@ -92,6 +124,7 @@ import (
 	"github.com/google/osv-scalibr/extractor/filesystem/os/portage"
 	"github.com/google/osv-scalibr/extractor/filesystem/os/rpm"
 	"github.com/google/osv-scalibr/extractor/filesystem/os/snap"
+	"github.com/google/osv-scalibr/extractor/filesystem/os/spack"
 	"github.com/google/osv-scalibr/extractor/filesystem/os/winget"
 	"github.com/google/osv-scalibr/extractor/filesystem/runtime/asdf"
 	"github.com/google/osv-scalibr/extractor/filesystem/runtime/mise"
@@ -100,6 +133,9 @@ import (
 	"github.com/google/osv-scalibr/extractor/filesystem/sbom/cdx"
 	"github.com/google/osv-scalibr/extractor/filesystem/sbom/spdx"
 	"github.com/google/osv-scalibr/extractor/filesystem/secrets/awsaccesskey"
+	"github.com/google/osv-scalibr/extractor/filesystem/secrets/bitwardenoauth2access"
+	"github.com/google/osv-scalibr/extractor/filesystem/secrets/cloudflareapitoken"
+	"github.com/google/osv-scalibr/extractor/filesystem/secrets/composerpackagist"
 	"github.com/google/osv-scalibr/extractor/filesystem/secrets/convert"
 	"github.com/google/osv-scalibr/extractor/filesystem/secrets/gitbasicauth/bitbucket"
 	"github.com/google/osv-scalibr/extractor/filesystem/secrets/gitbasicauth/codecatalyst"
@@ -112,9 +148,12 @@ import (
 	"github.com/google/osv-scalibr/veles/secrets/anthropicapikey"
 	"github.com/google/osv-scalibr/veles/secrets/azurestorageaccountaccesskey"
 	"github.com/google/osv-scalibr/veles/secrets/azuretoken"
+	"github.com/google/osv-scalibr/veles/secrets/circleci"
 	"github.com/google/osv-scalibr/veles/secrets/cratesioapitoken"
 	"github.com/google/osv-scalibr/veles/secrets/cursorapikey"
+	"github.com/google/osv-scalibr/veles/secrets/denopat"
 	"github.com/google/osv-scalibr/veles/secrets/digitaloceanapikey"
+	"github.com/google/osv-scalibr/veles/secrets/discordbottoken"
 	"github.com/google/osv-scalibr/veles/secrets/dockerhubpat"
 	"github.com/google/osv-scalibr/veles/secrets/elasticcloudapikey"
 	"github.com/google/osv-scalibr/veles/secrets/gcpapikey"
@@ -128,11 +167,16 @@ import (
 	"github.com/google/osv-scalibr/veles/secrets/grokxaiapikey"
 	"github.com/google/osv-scalibr/veles/secrets/hashicorpvault"
 	"github.com/google/osv-scalibr/veles/secrets/hcp"
+	"github.com/google/osv-scalibr/veles/secrets/herokuplatformkey"
+	"github.com/google/osv-scalibr/veles/secrets/http"
 	"github.com/google/osv-scalibr/veles/secrets/huggingfaceapikey"
 	"github.com/google/osv-scalibr/veles/secrets/jwt"
+	"github.com/google/osv-scalibr/veles/secrets/mistralapikey"
+	"github.com/google/osv-scalibr/veles/secrets/npmjsaccesstoken"
 	"github.com/google/osv-scalibr/veles/secrets/onepasswordkeys"
 	"github.com/google/osv-scalibr/veles/secrets/openai"
 	"github.com/google/osv-scalibr/veles/secrets/openrouter"
+	"github.com/google/osv-scalibr/veles/secrets/packagist"
 	"github.com/google/osv-scalibr/veles/secrets/paystacksecretkey"
 	"github.com/google/osv-scalibr/veles/secrets/perplexityapikey"
 	"github.com/google/osv-scalibr/veles/secrets/postmanapikey"
@@ -142,19 +186,45 @@ import (
 	"github.com/google/osv-scalibr/veles/secrets/pyxkeyv2"
 	"github.com/google/osv-scalibr/veles/secrets/recaptchakey"
 	"github.com/google/osv-scalibr/veles/secrets/rubygemsapikey"
+	"github.com/google/osv-scalibr/veles/secrets/salesforceoauth2access"
 	"github.com/google/osv-scalibr/veles/secrets/salesforceoauth2client"
+	"github.com/google/osv-scalibr/veles/secrets/salesforceoauth2jwt"
+	"github.com/google/osv-scalibr/veles/secrets/salesforceoauth2refresh"
+	"github.com/google/osv-scalibr/veles/secrets/sendgrid"
 	"github.com/google/osv-scalibr/veles/secrets/slacktoken"
+	"github.com/google/osv-scalibr/veles/secrets/squareapikey"
 	"github.com/google/osv-scalibr/veles/secrets/stripeapikeys"
+	"github.com/google/osv-scalibr/veles/secrets/supabase"
 	"github.com/google/osv-scalibr/veles/secrets/telegrambotapitoken"
 	"github.com/google/osv-scalibr/veles/secrets/tinkkeyset"
 	"github.com/google/osv-scalibr/veles/secrets/urlcreds"
 	"github.com/google/osv-scalibr/veles/secrets/vapid"
+	"github.com/google/osv-scalibr/veles/sensitiveinformation/atin"
+	"github.com/google/osv-scalibr/veles/sensitiveinformation/creditcard"
+	"github.com/google/osv-scalibr/veles/sensitiveinformation/iban"
+	"github.com/google/osv-scalibr/veles/sensitiveinformation/itin"
+	"github.com/google/osv-scalibr/veles/sensitiveinformation/ssn"
 
 	cpb "github.com/google/osv-scalibr/binary/proto/config_go_proto"
+	"github.com/google/osv-scalibr/plugin/config"
 )
 
 // InitFn is the extractor initializer function.
-type InitFn func(cfg *cpb.PluginConfig) (filesystem.Extractor, error)
+type InitFn func(cfg *config.PluginConfig) (filesystem.Extractor, error)
+
+func protoCfg(f func(cfg *cpb.PluginConfig) (filesystem.Extractor, error)) InitFn {
+	return func(cfg *config.PluginConfig) (filesystem.Extractor, error) {
+		if cfg != nil && cfg.ProtoConfig != nil {
+			return f(cfg.ProtoConfig)
+		}
+		return f(&cpb.PluginConfig{})
+	}
+}
+
+// ProtoCfg wraps a legacy initializer to the new signature.
+func ProtoCfg(f func(cfg *cpb.PluginConfig) (filesystem.Extractor, error)) InitFn {
+	return protoCfg(f)
+}
 
 // InitMap is a map of extractor names to their initers.
 type InitMap map[string][]InitFn
@@ -164,148 +234,211 @@ var (
 	// Language extractors.
 
 	// CppSource extractors for C++.
-	CppSource = InitMap{conanlock.Name: {conanlock.New}}
+	CppSource = InitMap{conanlock.Name: {protoCfg(conanlock.New)}}
 	// JavaSource extractors for Java.
 	JavaSource = InitMap{
-		gradlelockfile.Name:                {gradlelockfile.New},
-		gradleverificationmetadataxml.Name: {gradleverificationmetadataxml.New},
-		// pom.xml extraction for environments with and without network access.
-		pomxml.Name:    {pomxml.New},
-		pomxmlnet.Name: {pomxmlnet.New},
+		gradlelockfile.Name:                {protoCfg(gradlelockfile.New)},
+		gradleverificationmetadataxml.Name: {protoCfg(gradleverificationmetadataxml.New)},
+		gradleversioncatalog.Name:          {protoCfg(gradleversioncatalog.New)},
+		pomxml.Name:                        {protoCfg(pomxml.New)},
 	}
 	// JavaArtifact extractors for Java.
 	JavaArtifact = InitMap{
-		javaarchive.Name: {javaarchive.New},
+		javaarchive.Name: {protoCfg(javaarchive.New)},
 	}
 	// JavascriptSource extractors for Javascript.
 	JavascriptSource = InitMap{
-		packagejson.Name:     {packagejson.New},
-		packagelockjson.Name: {packagelockjson.New},
-		pnpmlock.Name:        {pnpmlock.New},
-		yarnlock.Name:        {yarnlock.New},
-		bunlock.Name:         {bunlock.New},
+		packagejson.Name:     {protoCfg(packagejson.New)},
+		packagelockjson.Name: {protoCfg(packagelockjson.New)},
+		denojson.Name:        {protoCfg(denojson.New)},
+		denotssource.Name:    {protoCfg(denotssource.New)},
+		pnpmlock.Name:        {protoCfg(pnpmlock.New)},
+		yarnlock.Name:        {protoCfg(yarnlock.New)},
+		bunlock.Name:         {protoCfg(bunlock.New)},
 	}
 	// JavascriptArtifact extractors for Javascript.
 	JavascriptArtifact = InitMap{
-		packagejson.Name: {packagejson.New},
+		packagejson.Name:  {protoCfg(packagejson.New)},
+		denojson.Name:     {protoCfg(denojson.New)},
+		electronasar.Name: {protoCfg(electronasar.New)},
+		vsix.Name:         {protoCfg(vsix.New)},
 	}
 	// PythonSource extractors for Python.
 	PythonSource = InitMap{
 		// requirements extraction for environments with and without network access.
-		requirements.Name: {requirements.New},
-		setup.Name:        {setup.New},
-		pipfilelock.Name:  {pipfilelock.New},
-		pdmlock.Name:      {pdmlock.New},
-		poetrylock.Name:   {poetrylock.New},
-		pylock.Name:       {pylock.New},
-		condameta.Name:    {condameta.New},
-		uvlock.Name:       {uvlock.New},
+		requirements.Name:   {protoCfg(requirements.New)},
+		setup.Name:          {protoCfg(setup.New)},
+		pipfilelock.Name:    {protoCfg(pipfilelock.New)},
+		pdmlock.Name:        {protoCfg(pdmlock.New)},
+		poetrylock.Name:     {protoCfg(poetrylock.New)},
+		pylock.Name:         {protoCfg(pylock.New)},
+		condameta.Name:      {protoCfg(condameta.New)},
+		ipythoninstall.Name: {protoCfg(ipythoninstall.New)},
+		uvlock.Name:         {protoCfg(uvlock.New)},
+		pyprojecttoml.Name:  {protoCfg(pyprojecttoml.New)},
+		setupcfg.Name:       {protoCfg(setupcfg.New)},
 	}
 	// PythonArtifact extractors for Python.
 	PythonArtifact = InitMap{
-		wheelegg.Name: {wheelegg.New},
+		wheelegg.Name: {protoCfg(wheelegg.New)},
 	}
 	// GoSource extractors for Go.
 	GoSource = InitMap{
-		gomod.Name: {gomod.New},
+		gomod.Name:         {protoCfg(gomod.New)},
+		gowork.Name:        {protoCfg(gowork.New)},
+		vendormodules.Name: {protoCfg(vendormodules.New)},
 	}
 	// GoArtifact extractors for Go.
 	GoArtifact = InitMap{
-		gobinary.Name: {gobinary.New},
+		gobinary.Name: {protoCfg(gobinary.New)},
 	}
 	// DartSource extractors for Dart.
-	DartSource = InitMap{pubspec.Name: {pubspec.New}}
+	DartSource = InitMap{
+		packageconfig.Name: {protoCfg(packageconfig.New)},
+		pubspec.Name:       {protoCfg(pubspec.New)},
+	}
+	// ClojureSource extractors for Clojure.
+	ClojureSource = InitMap{projectclj.Name: {protoCfg(projectclj.New)}}
 	// ErlangSource extractors for Erlang.
-	ErlangSource = InitMap{mixlock.Name: {mixlock.New}}
+	ErlangSource = InitMap{
+		mixlock.Name:   {protoCfg(mixlock.New)},
+		rebarlock.Name: {protoCfg(rebarlock.New)},
+	}
+	// GleamSource extractors for Gleam.
+	GleamSource = InitMap{gleamtoml.Name: {protoCfg(gleamtoml.New)}}
 	// NimSource extractors for Nim.
-	NimSource = InitMap{nimble.Name: {nimble.New}}
+	NimSource = InitMap{nimble.Name: {protoCfg(nimble.New)}}
 	// LuaSource extractors for Lua.
-	LuaSource = InitMap{luarocks.Name: {luarocks.New}}
+	LuaSource = InitMap{luarocks.Name: {protoCfg(luarocks.New)}}
+	// OcamlSource extractors for OCaml.
+	OcamlSource = InitMap{opam.Name: {protoCfg(opam.New)}}
 	// ElixirSource extractors for Elixir.
-	ElixirSource = InitMap{elixir.Name: {elixir.New}}
+	ElixirSource = InitMap{elixir.Name: {protoCfg(elixir.New)}}
 	// HaskellSource extractors for Haskell.
 	HaskellSource = InitMap{
-		stacklock.Name: {stacklock.New},
-		cabal.Name:     {cabal.New},
+		stacklock.Name:          {protoCfg(stacklock.New)},
+		cabalprojectfreeze.Name: {protoCfg(cabalprojectfreeze.New)},
+	}
+	// HaskellArtifact extractors for Haskell.
+	HaskellArtifact = InitMap{
+		cabalconf.Name: {protoCfg(cabalconf.New)},
 	}
 	// RSource extractors for R source extractors
-	RSource = InitMap{renvlock.Name: {renvlock.New}}
+	RSource = InitMap{
+		renvlock.Name: {protoCfg(renvlock.New)},
+		rpkg.Name:     {protoCfg(rpkg.New)},
+	}
 	// RubySource extractors for Ruby.
 	RubySource = InitMap{
-		gemspec.Name:     {gemspec.New},
-		gemfilelock.Name: {gemfilelock.New},
+		gemspec.Name:     {protoCfg(gemspec.New)},
+		gemfilelock.Name: {protoCfg(gemfilelock.New)},
+	}
+	// RubyArtifact extractors for Ruby.
+	RubyArtifact = InitMap{
+		gem.Name: {protoCfg(gem.New)},
 	}
 	// RustSource extractors for Rust.
 	RustSource = InitMap{
-		cargolock.Name: {cargolock.New},
-		cargotoml.Name: {cargotoml.New},
+		cargolock.Name: {protoCfg(cargolock.New)},
+		cargotoml.Name: {protoCfg(cargotoml.New)},
 	}
+	// CPANSource extractors for Perl.
+	CPANSource = InitMap{cpan.Name: {protoCfg(cpan.New)}}
 	// RustArtifact extractors for Rust.
 	RustArtifact = InitMap{
-		cargoauditable.Name: {cargoauditable.New},
+		cargoauditable.Name: {protoCfg(cargoauditable.New)},
+	}
+	// JuliaSource extractors for Julia.
+	JuliaSource = InitMap{
+		projecttoml.Name:  {protoCfg(projecttoml.New)},
+		manifesttoml.Name: {protoCfg(manifesttoml.New)},
+	}
+	// JuliaArtifact extractors for Julia.
+	JuliaArtifact = InitMap{
+		manifesttoml.Name: {protoCfg(manifesttoml.New)},
 	}
 	// SBOM extractors.
 	SBOM = InitMap{
-		cdx.Name:  {cdx.New},
-		spdx.Name: {spdx.New},
+		cdx.Name:  {protoCfg(cdx.New)},
+		spdx.Name: {protoCfg(spdx.New)},
 	}
 	// DotnetSource extractors for Dotnet (.NET).
 	DotnetSource = InitMap{
-		depsjson.Name:         {depsjson.New},
-		packagesconfig.Name:   {packagesconfig.New},
-		packageslockjson.Name: {packageslockjson.New},
+		csproj.Name:            {protoCfg(csproj.New)},
+		depsjson.Name:          {protoCfg(depsjson.New)},
+		nugetcpm.Name:          {protoCfg(nugetcpm.New)},
+		packagesconfig.Name:    {protoCfg(packagesconfig.New)},
+		packageslockjson.Name:  {protoCfg(packageslockjson.New)},
+		paketdependencies.Name: {protoCfg(paketdependencies.New)},
+		paketlock.Name:         {protoCfg(paketlock.New)},
+		projectassetsjson.Name: {protoCfg(projectassetsjson.New)},
 	}
 	// DotnetArtifact extractors for Dotnet (.NET).
 	DotnetArtifact = InitMap{
-		dotnetpe.Name: {dotnetpe.New},
+		dotnetpe.Name: {protoCfg(dotnetpe.New)},
 	}
 	// PHPSource extractors for PHP Source extractors.
-	PHPSource = InitMap{composerlock.Name: {composerlock.New}}
+	PHPSource = InitMap{composerlock.Name: {protoCfg(composerlock.New)}}
 	// SwiftSource extractors for Swift.
 	SwiftSource = InitMap{
-		packageresolved.Name: {packageresolved.New},
-		podfilelock.Name:     {podfilelock.New},
+		packageresolved.Name: {protoCfg(packageresolved.New)},
+		podfilelock.Name:     {protoCfg(podfilelock.New)},
 	}
+
+	// ZigSource extractors for Zig Package Source extractors.
+	ZigSource = InitMap{buildzigzon.Name: {protoCfg(buildzigzon.NewWithDeps)}}
+	// ZigArtifact extractors for Zig Package Artifacts
+	ZigArtifact = InitMap{buildzigzon.Name: {protoCfg(buildzigzon.New)}}
 
 	// Containers extractors.
 	Containers = InitMap{
-		containerd.Name:         {containerd.New},
-		k8simage.Name:           {k8simage.New},
-		podman.Name:             {podman.New},
-		dockerbaseimage.Name:    {dockerbaseimage.New},
-		dockercomposeimage.Name: {dockercomposeimage.New},
+		k8simage.Name:           {protoCfg(k8simage.New)},
+		podman.Name:             {protoCfg(podman.New)},
+		dockerbaseimage.Name:    {protoCfg(dockerbaseimage.New)},
+		dockercomposeimage.Name: {protoCfg(dockercomposeimage.New)},
+	}
+
+	// Bazel extractors.
+	Bazel = InitMap{
+		aspect.Name: {protoCfg(aspect.New)},
 	}
 
 	// OS extractors.
 	OS = InitMap{
-		dpkg.Name:       {dpkg.New},
-		apk.Name:        {apk.New},
-		rpm.Name:        {rpm.New},
-		cos.Name:        {cos.New},
-		snap.Name:       {snap.New},
-		nix.Name:        {nix.New},
-		module.Name:     {module.New},
-		vmlinuz.Name:    {vmlinuz.New},
-		pacman.Name:     {pacman.New},
-		portage.Name:    {portage.New},
-		flatpak.Name:    {flatpak.New},
-		homebrew.Name:   {homebrew.New},
-		macapps.Name:    {macapps.New},
-		macports.Name:   {macports.New},
-		winget.Name:     {winget.New},
-		chocolatey.Name: {chocolatey.New},
+		dpkg.Name:       {protoCfg(dpkg.New)},
+		apk.Name:        {protoCfg(apk.New)},
+		rpm.Name:        {protoCfg(rpm.New)},
+		cos.Name:        {protoCfg(cos.New)},
+		snap.Name:       {protoCfg(snap.New)},
+		nix.Name:        {protoCfg(nix.New)},
+		module.Name:     {protoCfg(module.New)},
+		vmlinuz.Name:    {protoCfg(vmlinuz.New)},
+		pacman.Name:     {protoCfg(pacman.New)},
+		portage.Name:    {protoCfg(portage.New)},
+		flatpak.Name:    {protoCfg(flatpak.New)},
+		spack.Name:      {protoCfg(spack.New)},
+		freebsd.Name:    {protoCfg(freebsd.New)},
+		homebrew.Name:   {protoCfg(homebrew.New)},
+		macapps.Name:    {protoCfg(macapps.New)},
+		macports.Name:   {protoCfg(macports.New)},
+		winget.Name:     {protoCfg(winget.New)},
+		chocolatey.Name: {protoCfg(chocolatey.New)},
+		chisel.Name:     {protoCfg(chisel.New)},
 	}
 
 	// SecretExtractors for Extractor interface.
 	SecretExtractors = InitMap{
-		mysqlmylogin.Name:            {mysqlmylogin.New},
-		pgpass.Name:                  {pgpass.New},
-		onepasswordconnecttoken.Name: {onepasswordconnecttoken.New},
-		mariadb.Name:                 {mariadb.New},
-		awsaccesskey.Name:            {awsaccesskey.New},
-		codecatalyst.Name:            {codecatalyst.New},
-		codecommit.Name:              {codecommit.New},
-		bitbucket.Name:               {bitbucket.New},
+		mysqlmylogin.Name:            {protoCfg(mysqlmylogin.New)},
+		pgpass.Name:                  {protoCfg(pgpass.New)},
+		onepasswordconnecttoken.Name: {protoCfg(onepasswordconnecttoken.New)},
+		mariadb.Name:                 {protoCfg(mariadb.New)},
+		awsaccesskey.Name:            {protoCfg(awsaccesskey.New)},
+		composerpackagist.Name:       {protoCfg(composerpackagist.New)},
+		codecatalyst.Name:            {protoCfg(codecatalyst.New)},
+		codecommit.Name:              {protoCfg(codecommit.New)},
+		bitbucket.Name:               {protoCfg(bitbucket.New)},
+		cloudflareapitoken.Name:      {protoCfg(cloudflareapitoken.New)},
+		bitwardenoauth2access.Name:   {protoCfg(bitwardenoauth2access.New)},
 	}
 
 	// SecretDetectors for Detector interface.
@@ -313,15 +446,20 @@ var (
 		{anthropicapikey.NewDetector(), "secrets/anthropicapikey", 0},
 		{azuretoken.NewDetector(), "secrets/azuretoken", 0},
 		{azurestorageaccountaccesskey.NewDetector(), "secrets/azurestorageaccountaccesskey", 0},
+		{circleci.NewPersonalAccessTokenDetector(), "secrets/circlecipat", 0},
+		{circleci.NewProjectTokenDetector(), "secrets/circleciproject", 0},
 		{cursorapikey.NewDetector(), "secrets/cursorapikey", 0},
 		{digitaloceanapikey.NewDetector(), "secrets/digitaloceanapikey", 0},
 		{pypiapitoken.NewDetector(), "secrets/pypiapitoken", 0},
 		{cratesioapitoken.NewDetector(), "secrets/cratesioapitoken", 0},
+		{npmjsaccesstoken.NewDetector(), "secrets/npmjsaccesstoken", 0},
 		{slacktoken.NewAppConfigAccessTokenDetector(), "secrets/slackappconfigaccesstoken", 0},
 		{slacktoken.NewAppConfigRefreshTokenDetector(), "secrets/slackappconfigrefreshtoken", 0},
 		{slacktoken.NewAppLevelTokenDetector(), "secrets/slackappleveltoken", 0},
 		{dockerhubpat.NewDetector(), "secrets/dockerhubpat", 0},
 		{elasticcloudapikey.NewDetector(), "secrets/elasticcloudapikey", 0},
+		{denopat.NewUserTokenDetector(), "secrets/denopatuser", 0},
+		{denopat.NewOrgTokenDetector(), "secrets/denopatorg", 0},
 		{gcpapikey.NewDetector(), "secrets/gcpapikey", 0},
 		{gcpexpressmode.NewDetector(), "secrets/gcpexpressmode", 0},
 		{gcpsak.NewDetector(), "secrets/gcpsak", 0},
@@ -333,13 +471,20 @@ var (
 		{hcp.NewPairDetector(), "secrets/hcpclientcredentials", 0},
 		{hcp.NewAccessTokenDetector(), "secrets/hcpaccesstoken", 0},
 		{huggingfaceapikey.NewDetector(), "secrets/huggingfaceapikey", 0},
+		{mistralapikey.NewDetector(), "secrets/mistralapikey", 0},
 		{openai.NewDetector(), "secrets/openai", 0},
 		{openrouter.NewDetector(), "secrets/openrouter", 0},
+		{packagist.NewAPISecretDetector(), "secrets/packagistsecret", 0},
+		{packagist.NewOrgReadTokenDetector(), "secrets/packagistorgreadtoken", 0},
+		{packagist.NewOrgUpdateTokenDetector(), "secrets/packagistorgupdatetoken", 0},
+		{packagist.NewUserUpdateTokenDetector(), "secrets/packagistuserupdatetoken", 0},
+		{packagist.NewConductorUpdateTokenDetector(), "secrets/packagistconductorupdatetoken", 0},
 		{perplexityapikey.NewDetector(), "secrets/perplexityapikey", 0},
 		{postmanapikey.NewAPIKeyDetector(), "secrets/postmanapikey", 0},
 		{postmanapikey.NewCollectionTokenDetector(), "secrets/postmancollectiontoken", 0},
 		{privatekey.NewDetector(), "secrets/privatekey", 0},
 		{rubygemsapikey.NewDetector(), "secrets/rubygemsapikey", 0},
+		{sendgrid.NewDetector(), "secrets/sendgrid", 0},
 		{tinkkeyset.NewDetector(), "secrets/tinkkeyset", 0},
 		{github.NewAppRefreshTokenDetector(), "secrets/githubapprefreshtoken", 0},
 		{github.NewAppS2STokenDetector(), "secrets/githubapps2stoken", 0},
@@ -350,6 +495,11 @@ var (
 		{stripeapikeys.NewSecretKeyDetector(), "secrets/stripesecretkey", 0},
 		{stripeapikeys.NewRestrictedKeyDetector(), "secrets/striperestrictedkey", 0},
 		{stripeapikeys.NewWebhookSecretDetector(), "secrets/stripewebhooksecret", 0},
+		{supabase.NewPATDetector(), "secrets/supabasepat", 0},
+		{supabase.NewProjectSecretKeyDetector(), "secrets/supabaseprojectsecretkey", 0},
+		{supabase.NewServiceRoleJWTDetector(), "secrets/supabaseservicerolejwt", 0},
+		{squareapikey.NewPersonalAccessTokenDetector(), "secrets/squarepersonalaccesstoken", 0},
+		{squareapikey.NewOAuthApplicationSecretDetector(), "secrets/squareoauthapplicationsecret", 0},
 		{gcpoauth2client.NewDetector(), "secrets/gcpoauth2clientcredentials", 0},
 		{gcpoauth2access.NewDetector(), "secrets/gcpoauth2accesstoken", 0},
 		{onepasswordkeys.NewSecretKeyDetector(), "secrets/onepasswordsecretkey", 0},
@@ -364,42 +514,65 @@ var (
 		{pyxkeyv2.NewDetector(), "secrets/pyxkeyv2", 0},
 		{urlcreds.NewDetector(), "secrets/urlcreds", 0},
 		{telegrambotapitoken.NewDetector(), "secrets/telegrambotapitoken", 0},
+		{salesforceoauth2access.NewDetector(), "secrets/salesforceoauth2access", 0},
 		{salesforceoauth2client.NewDetector(), "secrets/salesforceoauth2client", 0},
+		{herokuplatformkey.NewSecretKeyDetector(), "secrets/herokuplatformkey", 0},
+		{salesforceoauth2jwt.NewDetector(), "secrets/salesforceoauth2jwt", 0},
+		{salesforceoauth2refresh.NewDetector(), "secrets/salesforceoauth2refresh", 0},
+		{discordbottoken.NewDetector(), "secrets/discordbottoken", 0},
+		{http.NewBasicAuthDetector(), "secrets/httpbasicauth", 0},
+		{http.NewBearerDetector(), "secrets/httpbearer", 0},
+		{http.NewCSRFTokenDetector(), "secrets/csrftoken", 0},
+		{http.NewCookieDetector(), "secrets/httpcookie", 0},
+	})
+
+	SensitiveInformationDetectors = initMapFromVelesPlugins([]velesPlugin{
+		{creditcard.NewDetector(), "sensitiveinformation/creditcard", 0},
+		{atin.NewDetector(), "sensitiveinformation/atin", 0},
+		{iban.NewDetector(), "sensitiveinformation/iban", 0},
+		{itin.NewDetector(), "secrets/itin", 0},
+		{ssn.NewDetector(), "sensitiveinformation/ssn", 0},
 	})
 
 	// Secrets contains both secret extractors and detectors.
 	Secrets = concat(
 		SecretDetectors,
 		SecretExtractors,
+		SensitiveInformationDetectors,
 	)
 
 	// Misc artifact extractors.
 	Misc = InitMap{
-		vscodeextensions.Name: {vscodeextensions.New},
-		wordpressplugins.Name: {wordpressplugins.New},
-		chromeextensions.Name: {chromeextensions.New},
-		netscaler.Name:        {netscaler.New},
+		vscodeextensions.Name:  {protoCfg(vscodeextensions.New)},
+		wordpressplugins.Name:  {protoCfg(wordpressplugins.New)},
+		browserextensions.Name: {protoCfg(browserextensions.New)},
+		netscaler.Name:         {protoCfg(netscaler.New)},
 	}
 
 	// MiscSource extractors for miscellaneous purposes.
 	MiscSource = InitMap{
-		asdf.Name:        {asdf.New},
-		mise.Name:        {mise.New},
-		nvm.Name:         {nvm.New},
-		nodeversion.Name: {nodeversion.New},
+		asdf.Name:          {protoCfg(asdf.New)},
+		githubactions.Name: {protoCfg(githubactions.New)},
+		gitrepo.Name:       {protoCfg(gitrepo.New)},
+		mise.Name:          {protoCfg(mise.New)},
+		nvm.Name:           {protoCfg(nvm.New)},
+		nodeversion.Name:   {protoCfg(nodeversion.New)},
 	}
 
 	// EmbeddedFS extractors.
 	EmbeddedFS = InitMap{
-		archive.Name: {archive.New},
-		vdi.Name:     {vdi.New},
-		vmdk.Name:    {vmdk.New},
-		ova.Name:     {ova.New},
+		archive.Name: {protoCfg(archive.New)},
+		vdi.Name:     {protoCfg(vdi.New)},
+		vmdk.Name:    {protoCfg(vmdk.New)},
+		ova.Name:     {protoCfg(ova.New)},
+		qcow2.Name:   {protoCfg(qcow2.New)},
 	}
 
 	// FFA extractor.
 	FFA = InitMap{
-		unknownbinariesextr.Name: {unknownbinariesextr.New},
+		unknownbinariesextr.Name: {protoCfg(unknownbinariesextr.New)},
+		asdf.Name:                {protoCfg(asdf.New)},
+		bazelmaven.Name:          {protoCfg(bazelmaven.New)},
 	}
 
 	// Collections of extractors.
@@ -412,19 +585,26 @@ var (
 		PythonSource,
 		GoSource,
 		DartSource,
+		ClojureSource,
 		ErlangSource,
 		ElixirSource,
+		GleamSource,
 		HaskellSource,
 		PHPSource,
 		RSource,
 		RubySource,
 		RustSource,
+		JuliaSource,
 		DotnetSource,
 		SwiftSource,
 		NimSource,
+		OcamlSource,
 		LuaSource,
 		Secrets,
 		MiscSource,
+		CPANSource,
+		Bazel,
+		ZigSource,
 	)
 
 	// Artifact extractors find packages on built systems (e.g. parsing
@@ -443,6 +623,10 @@ var (
 		Containers,
 		Secrets,
 		FFA,
+		JuliaArtifact,
+		RubyArtifact,
+		HaskellArtifact,
+		ZigArtifact,
 	)
 
 	// Default extractors that are recommended to be enabled.
@@ -452,6 +636,7 @@ var (
 		PythonSource, PythonArtifact,
 		GoSource, GoArtifact,
 		OS,
+		Bazel,
 	)
 
 	// All extractors available from SCALIBR.
@@ -468,17 +653,24 @@ var (
 		"python":     vals(concat(PythonSource, PythonArtifact)),
 		"go":         vals(concat(GoSource, GoArtifact)),
 		"dart":       vals(DartSource),
+		"clojure":    vals(ClojureSource),
 		"erlang":     vals(ErlangSource),
+		"gleam":      vals(GleamSource),
 		"lua":        vals(LuaSource),
 		"nim":        vals(NimSource),
+		"ocaml":      vals(OcamlSource),
 		"elixir":     vals(ElixirSource),
-		"haskell":    vals(HaskellSource),
+		"haskell":    vals(concat(HaskellSource, HaskellArtifact)),
 		"r":          vals(RSource),
-		"ruby":       vals(RubySource),
+		"ruby":       vals(concat(RubySource, RubyArtifact)),
 		"dotnet":     vals(concat(DotnetSource, DotnetArtifact)),
 		"php":        vals(PHPSource),
 		"rust":       vals(concat(RustSource, RustArtifact)),
+		"julia":      vals(concat(JuliaSource, JuliaArtifact)),
 		"swift":      vals(SwiftSource),
+		"perl":       vals(CPANSource),
+		"bazel":      vals(Bazel),
+		"zig":        vals(ZigSource),
 
 		"sbom":       vals(SBOM),
 		"os":         vals(OS),
@@ -514,7 +706,7 @@ func vals(initMap InitMap) []InitFn {
 }
 
 // ExtractorsFromName returns a list of extractors from a name.
-func ExtractorsFromName(name string, cfg *cpb.PluginConfig) ([]filesystem.Extractor, error) {
+func ExtractorsFromName(name string, cfg *config.PluginConfig) ([]filesystem.Extractor, error) {
 	if initers, ok := extractorNames[name]; ok {
 		var result []filesystem.Extractor
 		for _, initer := range initers {
@@ -538,7 +730,27 @@ type velesPlugin struct {
 func initMapFromVelesPlugins(plugins []velesPlugin) InitMap {
 	result := InitMap{}
 	for _, p := range plugins {
-		result[p.name] = []InitFn{convert.FromVelesDetector(p.detector, p.name, p.version)}
+		result[p.name] = []InitFn{protoCfg(convert.FromVelesDetector(p.detector, p.name, p.version))}
 	}
 	return result
+}
+
+// RegisterExtractor dynamically adds an extractor to the SCALIBR registries.
+func RegisterExtractor(name string, initFn InitFn, categories []string) {
+	All = concat(All, InitMap{name: {initFn}})
+
+	// Update the extractorNames map directly for the new extractor and standard groups.
+	extractorNames = concat(extractorNames, InitMap{name: {initFn}})
+	extractorNames["all"] = append(extractorNames["all"], initFn)
+	extractorNames["extractors/all"] = append(extractorNames["extractors/all"], initFn)
+
+	// Dynamically append to requested category lists if they exist.
+	for _, cat := range categories {
+		if list, ok := extractorNames[cat]; ok {
+			extractorNames[cat] = append(list, initFn)
+		}
+		if list, ok := extractorNames["extractors/"+cat]; ok {
+			extractorNames["extractors/"+cat] = append(list, initFn)
+		}
+	}
 }

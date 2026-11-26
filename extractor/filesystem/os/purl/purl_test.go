@@ -22,12 +22,14 @@ import (
 	cosmeta "github.com/google/osv-scalibr/extractor/filesystem/os/cos/metadata"
 	dpkgmeta "github.com/google/osv-scalibr/extractor/filesystem/os/dpkg/metadata"
 	flatpakmeta "github.com/google/osv-scalibr/extractor/filesystem/os/flatpak/metadata"
+	freebsdmeta "github.com/google/osv-scalibr/extractor/filesystem/os/freebsd/metadata"
 	nixmeta "github.com/google/osv-scalibr/extractor/filesystem/os/nix/metadata"
 	pacmanmeta "github.com/google/osv-scalibr/extractor/filesystem/os/pacman/metadata"
 	portagemeta "github.com/google/osv-scalibr/extractor/filesystem/os/portage/metadata"
 	ospurl "github.com/google/osv-scalibr/extractor/filesystem/os/purl"
 	rpmmeta "github.com/google/osv-scalibr/extractor/filesystem/os/rpm/metadata"
 	snapmeta "github.com/google/osv-scalibr/extractor/filesystem/os/snap/metadata"
+	spackmeta "github.com/google/osv-scalibr/extractor/filesystem/os/spack/metadata"
 	"github.com/google/osv-scalibr/purl"
 )
 
@@ -153,6 +155,59 @@ func TestMakePackageURLDebian(t *testing.T) {
 			got := ospurl.MakePackageURL(name, version, tt.purlType, tt.metadata)
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("ospurl.MakePackageURL(%v, %v, %v, %v): unexpected PURL (-want +got):\n%s", name, version, tt.purlType, tt.metadata, diff)
+			}
+		})
+	}
+}
+
+func TestMakePackageURLFreeBSD(t *testing.T) {
+	pkgName := "curl"
+	pkgVersion := "8.4.0"
+
+	tests := []struct {
+		desc     string
+		metadata *freebsdmeta.Metadata
+		want     *purl.PackageURL
+	}{
+		{
+			desc: "all_fields_present",
+			metadata: &freebsdmeta.Metadata{
+				PackageName:    "curl",
+				PackageVersion: "8.4.0",
+				Origin:         "ftp/curl",
+				Arch:           "freebsd:14:x86:64",
+				OSID:           "freebsd",
+				OSVersionID:    "14.0",
+			},
+			want: &purl.PackageURL{
+				Type:    purl.TypeFreeBSD,
+				Name:    "curl",
+				Version: "8.4.0",
+				Qualifiers: purl.QualifiersFromMap(map[string]string{
+					purl.Arch:   "freebsd:14:x86:64",
+					purl.Distro: "14.0",
+					purl.Origin: "ftp/curl",
+				}),
+			},
+		},
+		{
+			desc: "minimal_fields",
+			metadata: &freebsdmeta.Metadata{
+				PackageName: "curl",
+			},
+			want: &purl.PackageURL{
+				Type:       purl.TypeFreeBSD,
+				Name:       "curl",
+				Version:    "8.4.0",
+				Qualifiers: purl.QualifiersFromMap(map[string]string{}),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			got := ospurl.MakePackageURL(pkgName, pkgVersion, purl.TypeFreeBSD, tt.metadata)
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("ospurl.MakePackageURL(%v): unexpected PURL (-want +got):\n%s", tt.metadata, diff)
 			}
 		})
 	}
@@ -448,6 +503,69 @@ func TestMakePackageURLRPM(t *testing.T) {
 				Qualifiers: purl.QualifiersFromMap(map[string]string{
 					purl.Epoch:     "1",
 					purl.Distro:    "32",
+					purl.SourceRPM: source,
+				}),
+			},
+		},
+		{
+			desc: "SUSE_sles",
+			metadata: &rpmmeta.Metadata{
+				PackageName: pkgname,
+				SourceRPM:   source,
+				Epoch:       epoch,
+				OSID:        "sles",
+				OSVersionID: "15.5",
+			},
+			want: &purl.PackageURL{
+				Type:      purl.TypeRPM,
+				Name:      pkgname,
+				Namespace: "suse",
+				Version:   version,
+				Qualifiers: purl.QualifiersFromMap(map[string]string{
+					purl.Epoch:     "1",
+					purl.Distro:    "sles-15.5",
+					purl.SourceRPM: source,
+				}),
+			},
+		},
+		{
+			desc: "Azure_Linux_azurelinux",
+			metadata: &rpmmeta.Metadata{
+				PackageName: pkgname,
+				SourceRPM:   source,
+				Epoch:       epoch,
+				OSID:        "azurelinux",
+				OSVersionID: "3.0",
+			},
+			want: &purl.PackageURL{
+				Type:      purl.TypeRPM,
+				Name:      pkgname,
+				Namespace: "azurelinux",
+				Version:   version,
+				Qualifiers: purl.QualifiersFromMap(map[string]string{
+					purl.Epoch:     "1",
+					purl.Distro:    "azurelinux-3.0",
+					purl.SourceRPM: source,
+				}),
+			},
+		},
+		{
+			desc: "Azure_Linux_mariner",
+			metadata: &rpmmeta.Metadata{
+				PackageName: pkgname,
+				SourceRPM:   source,
+				Epoch:       epoch,
+				OSID:        "mariner",
+				OSVersionID: "2.0",
+			},
+			want: &purl.PackageURL{
+				Type:      purl.TypeRPM,
+				Name:      pkgname,
+				Namespace: "azurelinux",
+				Version:   version,
+				Qualifiers: purl.QualifiersFromMap(map[string]string{
+					purl.Epoch:     "1",
+					purl.Distro:    "mariner-2.0",
 					purl.SourceRPM: source,
 				}),
 			},
@@ -775,6 +893,70 @@ func TestMakePackageURLNix(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
 			got := ospurl.MakePackageURL(pkgName, pkgVersion, purl.TypeNix, tt.metadata)
+			if diff := cmp.Diff(tt.want, got); diff != "" {
+				t.Errorf("ospurl.MakePackageURL(%v): unexpected PURL (-want +got):\n%s", tt.metadata, diff)
+			}
+		})
+	}
+}
+
+func TestMakePackageURLSpack(t *testing.T) {
+	pkgName := "libelf"
+	pkgVersion := "0.8.13"
+
+	tests := []struct {
+		desc     string
+		metadata *spackmeta.Metadata
+		want     *purl.PackageURL
+	}{
+		{
+			desc: "all_fields_present",
+			metadata: &spackmeta.Metadata{
+				Hash:         "dsohcyk45wchbd364rjio7b3sj2bucgc",
+				Platform:     "linux",
+				PlatformOS:   "ubuntu24.04",
+				Architecture: "skylake",
+			},
+			want: &purl.PackageURL{
+				Type:    purl.TypeSpack,
+				Name:    pkgName,
+				Version: pkgVersion,
+				Qualifiers: purl.QualifiersFromMap(map[string]string{
+					purl.Arch:   "skylake",
+					purl.Distro: "linux-ubuntu24.04",
+				}),
+			},
+		},
+		{
+			desc: "no_arch",
+			metadata: &spackmeta.Metadata{
+				Hash:       "dsohcyk45wchbd364rjio7b3sj2bucgc",
+				Platform:   "linux",
+				PlatformOS: "ubuntu24.04",
+			},
+			want: &purl.PackageURL{
+				Type:    purl.TypeSpack,
+				Name:    pkgName,
+				Version: pkgVersion,
+				Qualifiers: purl.QualifiersFromMap(map[string]string{
+					purl.Distro: "linux-ubuntu24.04",
+				}),
+			},
+		},
+		{
+			desc:     "minimal_fields",
+			metadata: &spackmeta.Metadata{},
+			want: &purl.PackageURL{
+				Type:       purl.TypeSpack,
+				Name:       pkgName,
+				Version:    pkgVersion,
+				Qualifiers: purl.QualifiersFromMap(map[string]string{}),
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			got := ospurl.MakePackageURL(pkgName, pkgVersion, purl.TypeSpack, tt.metadata)
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("ospurl.MakePackageURL(%v): unexpected PURL (-want +got):\n%s", tt.metadata, diff)
 			}

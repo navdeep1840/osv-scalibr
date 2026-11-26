@@ -23,12 +23,15 @@ import (
 	dpkgmeta "github.com/google/osv-scalibr/extractor/filesystem/os/dpkg/metadata"
 	"github.com/google/osv-scalibr/extractor/filesystem/os/ecosystem"
 	flatpakmeta "github.com/google/osv-scalibr/extractor/filesystem/os/flatpak/metadata"
+	freebsdmeta "github.com/google/osv-scalibr/extractor/filesystem/os/freebsd/metadata"
 	nixmeta "github.com/google/osv-scalibr/extractor/filesystem/os/nix/metadata"
 	pacmanmeta "github.com/google/osv-scalibr/extractor/filesystem/os/pacman/metadata"
 	portagemeta "github.com/google/osv-scalibr/extractor/filesystem/os/portage/metadata"
 	ospurl "github.com/google/osv-scalibr/extractor/filesystem/os/purl"
 	rpmmeta "github.com/google/osv-scalibr/extractor/filesystem/os/rpm/metadata"
 	snapmeta "github.com/google/osv-scalibr/extractor/filesystem/os/snap/metadata"
+	cdxmeta "github.com/google/osv-scalibr/extractor/filesystem/sbom/cdx/metadata"
+	spdxmeta "github.com/google/osv-scalibr/extractor/filesystem/sbom/spdx/metadata"
 	"github.com/google/osv-scalibr/purl"
 )
 
@@ -89,6 +92,64 @@ func TestMakeEcosystemAPK(t *testing.T) {
 			},
 			want: "BellSoft Hardened Containers:stream",
 		},
+		{
+			desc: "Wolfi",
+			metadata: &apkmeta.Metadata{
+				OSID: "wolfi",
+			},
+			want: "Wolfi",
+		},
+		{
+			desc: "Chainguard",
+			metadata: &apkmeta.Metadata{
+				OSID: "chainguard",
+			},
+			want: "Chainguard",
+		},
+		{
+			desc: "MinimOS",
+			metadata: &apkmeta.Metadata{
+				OSID: "minimos",
+			},
+			want: "MinimOS",
+		},
+		{
+			desc: "MinimOS_version_not_used_as_suffix",
+			metadata: &apkmeta.Metadata{
+				OSID:        "minimos",
+				OSVersionID: "20241031",
+			},
+			want: "MinimOS",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			got := ecosystem.MakeEcosystem(tt.metadata)
+			if diff := cmp.Diff(tt.want, got.String()); diff != "" {
+				t.Errorf("ecosystem.MakeEcosystem(%v) (-want +got):\n%s", tt.metadata, diff)
+			}
+		})
+	}
+}
+
+func TestMakeEcosystemFreeBSD(t *testing.T) {
+	tests := []struct {
+		desc     string
+		metadata *freebsdmeta.Metadata
+		want     string
+	}{
+		{
+			desc: "with_version",
+			metadata: &freebsdmeta.Metadata{
+				OSVersionID: "14.0",
+			},
+			want: "FreeBSD:14.0",
+		},
+		{
+			desc:     "without_version",
+			metadata: &freebsdmeta.Metadata{},
+			want:     "FreeBSD",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
@@ -125,6 +186,21 @@ func TestMakeEcosystemDebian(t *testing.T) {
 				OSVersionID: "12",
 			},
 			want: "Debian:12",
+		},
+		{
+			desc: "Echo",
+			metadata: &dpkgmeta.Metadata{
+				OSID: "echo",
+			},
+			want: "Echo",
+		},
+		{
+			desc: "Echo_version_not_used_as_suffix",
+			metadata: &dpkgmeta.Metadata{
+				OSID:        "echo",
+				OSVersionID: "2.0",
+			},
+			want: "Echo",
 		},
 		{
 			desc: "OS_ID_present_(OpenWrt),_not_valid_ecosystem,_so_ecosystem_should_be_empty",
@@ -300,6 +376,150 @@ func TestEcosystemRPM(t *testing.T) {
 				OSID: "openEuler",
 			},
 			want: "openEuler",
+		},
+		{
+			desc: "AlmaLinux_9",
+			metadata: &rpmmeta.Metadata{
+				OSID:        "almalinux",
+				OSVersionID: "9",
+			},
+			want: "AlmaLinux:9",
+		},
+		{
+			// Real VERSION_ID from almalinux:9.0 docker image is "9.0" not "9".
+			// OSV.dev ALSA advisories use "AlmaLinux:9" (major only).
+			desc: "AlmaLinux_9_point_release",
+			metadata: &rpmmeta.Metadata{
+				OSID:        "almalinux",
+				OSVersionID: "9.0",
+			},
+			want: "AlmaLinux:9",
+		},
+		{
+			desc: "AlmaLinux_9_point_release_late",
+			metadata: &rpmmeta.Metadata{
+				OSID:        "almalinux",
+				OSVersionID: "9.8",
+			},
+			want: "AlmaLinux:9",
+		},
+		{
+			desc: "AlmaLinux_8",
+			metadata: &rpmmeta.Metadata{
+				OSID:        "almalinux",
+				OSVersionID: "8",
+			},
+			want: "AlmaLinux:8",
+		},
+		{
+			desc: "AlmaLinux_8_point_release",
+			metadata: &rpmmeta.Metadata{
+				OSID:        "almalinux",
+				OSVersionID: "8.9",
+			},
+			want: "AlmaLinux:8",
+		},
+		{
+			desc: "AlmaLinux_no_version",
+			metadata: &rpmmeta.Metadata{
+				OSID: "almalinux",
+			},
+			want: "AlmaLinux",
+		},
+		{
+			desc: "Mageia_9",
+			metadata: &rpmmeta.Metadata{
+				OSID:        "mageia",
+				OSVersionID: "9",
+			},
+			want: "Mageia:9",
+		},
+		{
+			desc: "Mageia_8",
+			metadata: &rpmmeta.Metadata{
+				OSID:        "mageia",
+				OSVersionID: "8",
+			},
+			want: "Mageia:8",
+		},
+		{
+			desc: "Mageia_no_version",
+			metadata: &rpmmeta.Metadata{
+				OSID: "mageia",
+			},
+			want: "Mageia",
+		},
+		{
+			desc: "SUSE_with_version",
+			metadata: &rpmmeta.Metadata{
+				OSID:        "sles",
+				OSVersionID: "15.5",
+			},
+			want: "SUSE:15.5",
+		},
+		{
+			desc: "SUSE_no_version",
+			metadata: &rpmmeta.Metadata{
+				OSID: "sles",
+			},
+			want: "SUSE",
+		},
+		{
+			desc: "Azure_Linux_azurelinux_with_version",
+			metadata: &rpmmeta.Metadata{
+				OSID:        "azurelinux",
+				OSVersionID: "3.0",
+			},
+			want: "Azure Linux:3.0",
+		},
+		{
+			desc: "Azure_Linux_mariner_with_version",
+			metadata: &rpmmeta.Metadata{
+				OSID:        "mariner",
+				OSVersionID: "2.0",
+			},
+			want: "Azure Linux:2.0",
+		},
+		{
+			desc: "Azure_Linux_no_version",
+			metadata: &rpmmeta.Metadata{
+				OSID: "azurelinux",
+			},
+			want: "Azure Linux",
+		},
+		{
+			// OSV.dev openSUSE advisories use suffix "Leap X.Y" (e.g. "openSUSE:Leap 15.5").
+			// Confirmed via OSV.dev API: SUSE-SU-2022:1657-1 lists openSUSE:Leap 15.3 and 15.4.
+			desc: "openSUSE_Leap_15.5",
+			metadata: &rpmmeta.Metadata{
+				OSID:        "opensuse-leap",
+				OSVersionID: "15.5",
+			},
+			want: "openSUSE:Leap 15.5",
+		},
+		{
+			desc: "openSUSE_Leap_15.3",
+			metadata: &rpmmeta.Metadata{
+				OSID:        "opensuse-leap",
+				OSVersionID: "15.3",
+			},
+			want: "openSUSE:Leap 15.3",
+		},
+		{
+			desc: "openSUSE_Leap_15.4",
+			metadata: &rpmmeta.Metadata{
+				OSID:        "opensuse-leap",
+				OSVersionID: "15.4",
+			},
+			want: "openSUSE:Leap 15.4",
+		},
+		{
+			// When VERSION_ID is missing, return the base ecosystem without suffix.
+			desc: "openSUSE_Leap_no_version",
+			metadata: &rpmmeta.Metadata{
+				OSID: "opensuse-leap",
+			},
+			want: "openSUSE",
 		},
 		{
 			desc:     "OS ID not present",
@@ -640,6 +860,69 @@ func TestMakePackageURLRPM(t *testing.T) {
 				}),
 			},
 		},
+		{
+			desc: "SUSE_sles",
+			metadata: &rpmmeta.Metadata{
+				PackageName: pkgname,
+				SourceRPM:   source,
+				Epoch:       epoch,
+				OSID:        "sles",
+				OSVersionID: "15.5",
+			},
+			want: &purl.PackageURL{
+				Type:      purl.TypeRPM,
+				Name:      pkgname,
+				Namespace: "suse",
+				Version:   version,
+				Qualifiers: purl.QualifiersFromMap(map[string]string{
+					purl.Epoch:     "1",
+					purl.Distro:    "sles-15.5",
+					purl.SourceRPM: source,
+				}),
+			},
+		},
+		{
+			desc: "Azure_Linux_azurelinux",
+			metadata: &rpmmeta.Metadata{
+				PackageName: pkgname,
+				SourceRPM:   source,
+				Epoch:       epoch,
+				OSID:        "azurelinux",
+				OSVersionID: "3.0",
+			},
+			want: &purl.PackageURL{
+				Type:      purl.TypeRPM,
+				Name:      pkgname,
+				Namespace: "azurelinux",
+				Version:   version,
+				Qualifiers: purl.QualifiersFromMap(map[string]string{
+					purl.Epoch:     "1",
+					purl.Distro:    "azurelinux-3.0",
+					purl.SourceRPM: source,
+				}),
+			},
+		},
+		{
+			desc: "Azure_Linux_mariner",
+			metadata: &rpmmeta.Metadata{
+				PackageName: pkgname,
+				SourceRPM:   source,
+				Epoch:       epoch,
+				OSID:        "mariner",
+				OSVersionID: "2.0",
+			},
+			want: &purl.PackageURL{
+				Type:      purl.TypeRPM,
+				Name:      pkgname,
+				Namespace: "azurelinux",
+				Version:   version,
+				Qualifiers: purl.QualifiersFromMap(map[string]string{
+					purl.Epoch:     "1",
+					purl.Distro:    "mariner-2.0",
+					purl.SourceRPM: source,
+				}),
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.desc, func(t *testing.T) {
@@ -965,6 +1248,179 @@ func TestMakePackageURLNix(t *testing.T) {
 			got := ospurl.MakePackageURL(pkgName, pkgVersion, purl.TypeNix, tt.metadata)
 			if diff := cmp.Diff(tt.want, got); diff != "" {
 				t.Errorf("ospurl.MakePackageURL(%v): unexpected PURL (-want +got):\n%s", tt.metadata, diff)
+			}
+		})
+	}
+}
+
+func TestMakeEcosystemSBOM(t *testing.T) {
+	tests := []struct {
+		desc     string
+		metadata any
+		want     string
+	}{
+		{
+			desc: "SPDX Alpine",
+			metadata: &spdxmeta.Metadata{
+				PURL: &purl.PackageURL{
+					Type:       purl.TypeApk,
+					Namespace:  "alpine",
+					Name:       "nginx",
+					Version:    "1.18.0",
+					Qualifiers: purl.QualifiersFromMap(map[string]string{"distro": "v3.18"}),
+				},
+			},
+			want: "Alpine:v3.18",
+		},
+		{
+			desc: "SPDX Alpine (no v prefix)",
+			metadata: &spdxmeta.Metadata{
+				PURL: &purl.PackageURL{
+					Type:       purl.TypeApk,
+					Namespace:  "alpine",
+					Name:       "nginx",
+					Version:    "1.18.0",
+					Qualifiers: purl.QualifiersFromMap(map[string]string{"distro": "3.18"}),
+				},
+			},
+			want: "Alpine:v3.18",
+		},
+		{
+			desc: "CDX Alpine",
+			metadata: &cdxmeta.Metadata{
+				PURL: &purl.PackageURL{
+					Type:       purl.TypeApk,
+					Namespace:  "alpine",
+					Name:       "nginx",
+					Version:    "1.18.0",
+					Qualifiers: purl.QualifiersFromMap(map[string]string{"distro": "v3.18"}),
+				},
+			},
+			want: "Alpine:v3.18",
+		},
+		{
+			desc: "SPDX Wolfi",
+			metadata: &spdxmeta.Metadata{
+				PURL: &purl.PackageURL{
+					Type:      purl.TypeApk,
+					Namespace: "wolfi",
+					Name:      "nginx",
+					Version:   "1.18.0",
+				},
+			},
+			want: "Wolfi",
+		},
+		{
+			desc: "SPDX Alpine invalid distro version",
+			metadata: &spdxmeta.Metadata{
+				PURL: &purl.PackageURL{
+					Type:       purl.TypeApk,
+					Namespace:  "alpine",
+					Name:       "nginx",
+					Version:    "1.18.0",
+					Qualifiers: purl.QualifiersFromMap(map[string]string{"distro": "bad"}),
+				},
+			},
+			want: "Alpine",
+		},
+		{
+			desc: "SPDX Alpine invalid distro version (no minor)",
+			metadata: &spdxmeta.Metadata{
+				PURL: &purl.PackageURL{
+					Type:       purl.TypeApk,
+					Namespace:  "alpine",
+					Name:       "nginx",
+					Version:    "1.18.0",
+					Qualifiers: purl.QualifiersFromMap(map[string]string{"distro": "v3"}),
+				},
+			},
+			want: "Alpine",
+		},
+		{
+			desc: "SPDX Wolfi with distro (should ignore distro)",
+			metadata: &spdxmeta.Metadata{
+				PURL: &purl.PackageURL{
+					Type:       purl.TypeApk,
+					Namespace:  "wolfi",
+					Name:       "nginx",
+					Version:    "1.18.0",
+					Qualifiers: purl.QualifiersFromMap(map[string]string{"distro": "v3.18"}),
+				},
+			},
+			want: "Wolfi",
+		},
+		{
+			desc: "SPDX Debian with version",
+			metadata: &spdxmeta.Metadata{
+				PURL: &purl.PackageURL{
+					Type:       purl.TypeDebian,
+					Namespace:  "debian",
+					Name:       "nginx",
+					Version:    "1.18.0",
+					Qualifiers: purl.QualifiersFromMap(map[string]string{"distro": "11"}),
+				},
+			},
+			want: "Debian:11",
+		},
+		{
+			desc: "SPDX Ubuntu with codename",
+			metadata: &spdxmeta.Metadata{
+				PURL: &purl.PackageURL{
+					Type:       purl.TypeDebian,
+					Namespace:  "ubuntu",
+					Name:       "nginx",
+					Version:    "1.18.0",
+					Qualifiers: purl.QualifiersFromMap(map[string]string{"distro": "jammy"}),
+				},
+			},
+			want: "Ubuntu:22.04:LTS",
+		},
+		{
+			desc: "SPDX Debian with sid",
+			metadata: &spdxmeta.Metadata{
+				PURL: &purl.PackageURL{
+					Type:       purl.TypeDebian,
+					Namespace:  "debian",
+					Name:       "nginx",
+					Version:    "1.18.0",
+					Qualifiers: purl.QualifiersFromMap(map[string]string{"distro": "sid"}),
+				},
+			},
+			want: "Debian:sid",
+		},
+		{
+			desc: "SPDX Debian with experimental",
+			metadata: &spdxmeta.Metadata{
+				PURL: &purl.PackageURL{
+					Type:       purl.TypeDebian,
+					Namespace:  "debian",
+					Name:       "nginx",
+					Version:    "1.18.0",
+					Qualifiers: purl.QualifiersFromMap(map[string]string{"distro": "experimental"}),
+				},
+			},
+			want: "Debian:experimental",
+		},
+		{
+			desc: "SPDX Non-apk purl with distro (should ignore)",
+			metadata: &spdxmeta.Metadata{
+				PURL: &purl.PackageURL{
+					Type:       purl.TypeNPM,
+					Namespace:  "",
+					Name:       "foo",
+					Version:    "1.0.0",
+					Qualifiers: purl.QualifiersFromMap(map[string]string{"distro": "v3.18"}),
+				},
+			},
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.desc, func(t *testing.T) {
+			got := ecosystem.MakeEcosystem(tt.metadata)
+			if diff := cmp.Diff(tt.want, got.String()); diff != "" {
+				t.Errorf("ecosystem.MakeEcosystem(%v) (-want +got):\n%s", tt.metadata, diff)
 			}
 		})
 	}

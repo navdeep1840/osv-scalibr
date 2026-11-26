@@ -27,7 +27,6 @@ import (
 	"github.com/google/osv-scalibr/extractor/filesystem/os/kernel/vmlinuz"
 	vmlinuzmeta "github.com/google/osv-scalibr/extractor/filesystem/os/kernel/vmlinuz/metadata"
 	"github.com/google/osv-scalibr/extractor/filesystem/simplefileapi"
-	scalibrfs "github.com/google/osv-scalibr/fs"
 	"github.com/google/osv-scalibr/inventory"
 	"github.com/google/osv-scalibr/stats"
 	"github.com/google/osv-scalibr/testing/fakefs"
@@ -190,7 +189,7 @@ func TestExtract(t *testing.T) {
 						OSVersionCodename: "jammy",
 						OSVersionID:       "22.04",
 					},
-					Locations: []string{"testdata/valid"},
+					Location: extractor.LocationFromPath("testdata/valid"),
 				},
 			},
 			wantResultMetric: stats.FileExtractedResultSuccess,
@@ -232,7 +231,7 @@ func TestExtract(t *testing.T) {
 			}
 
 			input := &filesystem.ScanInput{
-				FS: scalibrfs.DirFS(d), Path: tt.path, Reader: r, Root: d, Info: info,
+				FS: fakefs.DirFS(t, d), Path: tt.path, Reader: r, Root: d, Info: info,
 			}
 
 			got, err := e.Extract(t.Context(), input)

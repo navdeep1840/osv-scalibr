@@ -23,19 +23,19 @@ import (
 	"deps.dev/util/resolve/schema"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/osv-scalibr/clients/clienttest"
-	scalibrfs "github.com/google/osv-scalibr/fs"
 	"github.com/google/osv-scalibr/guidedremediation/internal/lockfile/npm"
 	"github.com/google/osv-scalibr/guidedremediation/result"
+	"github.com/google/osv-scalibr/testing/fakefs"
 )
 
 func TestReadV1(t *testing.T) {
 	// This lockfile was generated using a private registry with https://verdaccio.org/
 	// Mock packages were published to it and installed with npm.
-	rw, err := npm.GetReadWriter()
+	rw, err := npm.GetReadWriter(nil)
 	if err != nil {
 		t.Fatalf("error creating ReadWriter: %v", err)
 	}
-	fsys := scalibrfs.DirFS("./testdata/v1")
+	fsys := fakefs.DirFS(t, fakefs.CopyTestData(t, "./testdata/v1"))
 	got, err := rw.Read("package-lock.json", fsys)
 	if err != nil {
 		t.Fatalf("error reading lockfile: %v", err)
@@ -74,11 +74,11 @@ r 1.0.0
 func TestReadV2(t *testing.T) {
 	// This lockfile was generated using a private registry with https://verdaccio.org/
 	// Mock packages were published to it and installed with npm.
-	rw, err := npm.GetReadWriter()
+	rw, err := npm.GetReadWriter(nil)
 	if err != nil {
 		t.Fatalf("error creating ReadWriter: %v", err)
 	}
-	fsys := scalibrfs.DirFS("./testdata/v2")
+	fsys := fakefs.DirFS(t, fakefs.CopyTestData(t, "./testdata/v2"))
 	got, err := rw.Read("package-lock.json", fsys)
 	if err != nil {
 		t.Fatalf("error reading lockfile: %v", err)
@@ -123,11 +123,11 @@ func TestTypeOrdering(t *testing.T) {
 	// Empirically, devDependencies > optionalDependencies > dependencies > peerDependencies
 
 	// This lockfile was manually constructed.
-	rw, err := npm.GetReadWriter()
+	rw, err := npm.GetReadWriter(nil)
 	if err != nil {
 		t.Fatalf("error creating ReadWriter: %v", err)
 	}
-	fsys := scalibrfs.DirFS("./testdata/type_order")
+	fsys := fakefs.DirFS(t, fakefs.CopyTestData(t, "./testdata/type_order"))
 	got, err := rw.Read("package-lock.json", fsys)
 	if err != nil {
 		t.Fatalf("error reading lockfile: %v", err)
@@ -161,11 +161,11 @@ func TestPeerMeta(t *testing.T) {
 	// Testing the behavior with peerDependencies and peerDependenciesMeta.
 
 	// This lockfile was manually constructed.
-	rw, err := npm.GetReadWriter()
+	rw, err := npm.GetReadWriter(nil)
 	if err != nil {
 		t.Fatalf("error creating ReadWriter: %v", err)
 	}
-	fsys := scalibrfs.DirFS("./testdata/peer_meta")
+	fsys := fakefs.DirFS(t, fakefs.CopyTestData(t, "./testdata/peer_meta"))
 	got, err := rw.Read("package-lock.json", fsys)
 	if err != nil {
 		t.Fatalf("error reading lockfile: %v", err)
@@ -231,12 +231,17 @@ func TestWrite(t *testing.T) {
 	}
 
 	// Write the patched lockfile
-	rw, err := npm.GetReadWriter()
+	rw, err := npm.GetReadWriter(nil)
 	if err != nil {
 		t.Fatalf("error creating ReadWriter: %v", err)
 	}
 	gotPath := filepath.Join(outDir, "package-lock.json")
-	if err := rw.Write("write/package-lock.json", scalibrfs.DirFS("testdata"), patches, gotPath); err != nil {
+	outFS, err := os.OpenRoot(outDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer outFS.Close()
+	if err := rw.Write("write/package-lock.json", fakefs.DirFS(t, fakefs.CopyTestData(t, "testdata")), patches, outFS, "package-lock.json"); err != nil {
 		t.Fatalf("error writing lockfile: %v", err)
 	}
 	got, err := os.ReadFile(gotPath)

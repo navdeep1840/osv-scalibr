@@ -20,10 +20,13 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/google/osv-scalibr/log"
-
+	"github.com/google/osv-scalibr/binary/proto/metadata"
 	pb "github.com/google/osv-scalibr/binary/proto/scan_result_go_proto"
 )
+
+func init() {
+	metadata.Register(ToStruct, ToProto)
+}
 
 var (
 	// pattern to match: openEuler version (qualifier)
@@ -50,11 +53,16 @@ type Metadata struct {
 
 // ToNamespace extracts the PURL namespace from the metadata.
 func (m *Metadata) ToNamespace() string {
-	if m.OSID != "" {
+	switch m.OSID {
+	case "sles":
+		return "suse"
+	case "azurelinux", "mariner":
+		return "azurelinux"
+	case "":
+		return ""
+	default:
 		return m.OSID
 	}
-	log.Errorf("os-release[ID] not set, fallback to ''")
-	return ""
 }
 
 // ToDistro extracts the OS distro from the metadata.
@@ -63,52 +71,39 @@ func (m *Metadata) ToDistro() string {
 	if v == "" {
 		v = m.OSBuildID
 		if v == "" {
-			log.Errorf("VERSION_ID and BUILD_ID not set in os-release")
 			return ""
 		}
-		log.Errorf("os-release[VERSION_ID] not set, fallback to BUILD_ID")
 	}
 
 	id := m.OSID
 	if id == "" {
-		log.Errorf("os-release[ID] not set, fallback to ''")
 		return v
 	}
 	return fmt.Sprintf("%s-%s", id, v)
 }
 
-// SetProto sets the RPMPackageMetadata field in the Package proto.
-func (m *Metadata) SetProto(p *pb.Package) {
-	if m == nil {
-		return
-	}
-	if p == nil {
-		return
-	}
-
-	p.Metadata = &pb.Package_RpmMetadata{
-		RpmMetadata: &pb.RPMPackageMetadata{
-			PackageName:  m.PackageName,
-			SourceRpm:    m.SourceRPM,
-			Epoch:        int32(m.Epoch),
-			OsName:       m.OSName,
-			OsCpeName:    m.OSCPEName,
-			OsPrettyName: m.OSPrettyName,
-			OsId:         m.OSID,
-			OsVersionId:  m.OSVersionID,
-			OsBuildId:    m.OSBuildID,
-			Vendor:       m.Vendor,
-			Architecture: m.Architecture,
-		},
+// ToProto converts the Metadata struct to a RPMPackageMetadata proto.
+func ToProto(m *Metadata) *pb.RPMPackageMetadata {
+	return &pb.RPMPackageMetadata{
+		PackageName:  m.PackageName,
+		SourceRpm:    m.SourceRPM,
+		Epoch:        int32(m.Epoch),
+		OsName:       m.OSName,
+		OsCpeName:    m.OSCPEName,
+		OsPrettyName: m.OSPrettyName,
+		OsId:         m.OSID,
+		OsVersionId:  m.OSVersionID,
+		OsBuildId:    m.OSBuildID,
+		Vendor:       m.Vendor,
+		Architecture: m.Architecture,
 	}
 }
 
+// IsProtoable marks the struct as a metadata type.
+func (m *Metadata) IsProtoable() {}
+
 // ToStruct converts the RPMPackageMetadata proto to a Metadata struct.
 func ToStruct(m *pb.RPMPackageMetadata) *Metadata {
-	if m == nil {
-		return nil
-	}
-
 	return &Metadata{
 		PackageName:  m.GetPackageName(),
 		SourceRPM:    m.GetSourceRpm(),

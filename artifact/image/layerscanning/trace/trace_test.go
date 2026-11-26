@@ -16,6 +16,8 @@ package trace
 
 import (
 	"fmt"
+	"maps"
+	"path/filepath"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -26,11 +28,52 @@ import (
 	"github.com/google/osv-scalibr/artifact/image/layerscanning/testing/fakelayerbuilder"
 	"github.com/google/osv-scalibr/extractor"
 	"github.com/google/osv-scalibr/extractor/filesystem"
+	"github.com/google/osv-scalibr/extractor/filesystem/os/apk"
+	apkmeta "github.com/google/osv-scalibr/extractor/filesystem/os/apk/metadata"
 	"github.com/google/osv-scalibr/inventory"
 	"github.com/google/osv-scalibr/purl"
 	"github.com/google/osv-scalibr/stats"
 	"github.com/opencontainers/go-digest"
 )
+
+// buildFakeChainLayersFromDiffs constructs a slice of fake ChainLayers from
+// per-layer file diffs, accumulating files across layers to simulate a
+// container image's cumulative chain layers.
+func buildFakeChainLayersFromDiffs(t *testing.T, layerDiffs []map[string]string) []image.ChainLayer {
+	t.Helper()
+	testDir := t.TempDir()
+	cumulativeFiles := map[string]string{}
+	chainLayers := make([]image.ChainLayer, 0, len(layerDiffs))
+
+	for i, diffFiles := range layerDiffs {
+		diffID := digest.Digest(fmt.Sprintf("sha256:diff-id-%d", i))
+		chainID := digest.Digest(fmt.Sprintf("sha256:chain-id-%d", i))
+		command := fmt.Sprintf("command-%d", i)
+
+		layer, err := fakelayer.New(filepath.Join(testDir, fmt.Sprintf("layer-%d", i)), diffID, command, diffFiles, false)
+		if err != nil {
+			t.Fatalf("fakelayer.New(layer-%d) failed: %v", i, err)
+		}
+
+		maps.Copy(cumulativeFiles, diffFiles)
+		chainFiles := maps.Clone(cumulativeFiles)
+		cl, err := fakechainlayer.New(&fakechainlayer.Config{
+			TestDir:           filepath.Join(testDir, fmt.Sprintf("chainlayer-%d", i)),
+			Index:             i,
+			DiffID:            diffID,
+			ChainID:           chainID,
+			Command:           command,
+			Layer:             layer,
+			Files:             chainFiles,
+			FilesAlreadyExist: false,
+		})
+		if err != nil {
+			t.Fatalf("fakechainlayer.New(chainlayer-%d) failed: %v", i, err)
+		}
+		chainLayers = append(chainLayers, cl)
+	}
+	return chainLayers
+}
 
 func TestPopulateLayerDetails(t *testing.T) {
 	lm := func(i int) *extractor.LayerMetadata {
@@ -56,6 +99,10 @@ func TestPopulateLayerDetails(t *testing.T) {
 	)
 
 	fakeLayerExtractor := fakelayerbuilder.FakeTestLayersExtractor{}
+	apkExtractor, err := apk.New(nil)
+	if err != nil {
+		t.Fatalf("apk.New(nil) failed: %v", err)
+	}
 	fakeChainLayers := fakelayerbuilder.BuildFakeChainLayersFromPath(t, t.TempDir(), "testdata/populatelayers.yml")
 
 	tests := []struct {
@@ -75,19 +122,19 @@ func TestPopulateLayerDetails(t *testing.T) {
 			name: "empty_chain_layers",
 			pkgs: []*extractor.Package{
 				{
-					Name:      fooPackage,
-					PURLType:  purl.TypeGeneric,
-					Locations: []string{fooFile},
-					Plugins:   []string{fakeLayerExtractor.Name()},
+					Name:     fooPackage,
+					PURLType: purl.TypeGeneric,
+					Location: extractor.LocationFromPath(fooFile),
+					Plugins:  []string{fakeLayerExtractor.Name()},
 				},
 			},
 			chainLayers: []image.ChainLayer{},
 			wantPackages: []*extractor.Package{
 				{
-					Name:      fooPackage,
-					PURLType:  purl.TypeGeneric,
-					Locations: []string{fooFile},
-					Plugins:   []string{fakeLayerExtractor.Name()},
+					Name:     fooPackage,
+					PURLType: purl.TypeGeneric,
+					Location: extractor.LocationFromPath(fooFile),
+					Plugins:  []string{fakeLayerExtractor.Name()},
 				},
 			},
 		},
@@ -95,9 +142,9 @@ func TestPopulateLayerDetails(t *testing.T) {
 			name: "package_with_nil_extractor",
 			pkgs: []*extractor.Package{
 				{
-					Name:      fooPackage,
-					PURLType:  purl.TypeGeneric,
-					Locations: []string{fooFile},
+					Name:     fooPackage,
+					PURLType: purl.TypeGeneric,
+					Location: extractor.LocationFromPath(fooFile),
 				},
 			},
 			chainLayers: []image.ChainLayer{
@@ -105,9 +152,9 @@ func TestPopulateLayerDetails(t *testing.T) {
 			},
 			wantPackages: []*extractor.Package{
 				{
-					Name:      fooPackage,
-					PURLType:  purl.TypeGeneric,
-					Locations: []string{fooFile},
+					Name:     fooPackage,
+					PURLType: purl.TypeGeneric,
+					Location: extractor.LocationFromPath(fooFile),
 				},
 			},
 		},
@@ -115,16 +162,16 @@ func TestPopulateLayerDetails(t *testing.T) {
 			name: "package_in_single_chain_layer",
 			pkgs: []*extractor.Package{
 				{
-					Name:      fooPackage,
-					PURLType:  purl.TypeGeneric,
-					Locations: []string{fooFile},
-					Plugins:   []string{fakeLayerExtractor.Name()},
+					Name:     fooPackage,
+					PURLType: purl.TypeGeneric,
+					Location: extractor.LocationFromPath(fooFile),
+					Plugins:  []string{fakeLayerExtractor.Name()},
 				},
 				{
-					Name:      barPackage,
-					PURLType:  purl.TypeGeneric,
-					Locations: []string{barFile},
-					Plugins:   []string{fakeLayerExtractor.Name()},
+					Name:     barPackage,
+					PURLType: purl.TypeGeneric,
+					Location: extractor.LocationFromPath(barFile),
+					Plugins:  []string{fakeLayerExtractor.Name()},
 				},
 			},
 			extractor: fakeLayerExtractor,
@@ -135,14 +182,14 @@ func TestPopulateLayerDetails(t *testing.T) {
 				{
 					Name:          fooPackage,
 					PURLType:      purl.TypeGeneric,
-					Locations:     []string{fooFile},
+					Location:      extractor.LocationFromPath(fooFile),
 					Plugins:       []string{fakeLayerExtractor.Name()},
 					LayerMetadata: lm(0),
 				},
 				{
 					Name:          barPackage,
 					PURLType:      purl.TypeGeneric,
-					Locations:     []string{barFile},
+					Location:      extractor.LocationFromPath(barFile),
 					Plugins:       []string{fakeLayerExtractor.Name()},
 					LayerMetadata: lm(0),
 				},
@@ -152,10 +199,10 @@ func TestPopulateLayerDetails(t *testing.T) {
 			name: "package_in_two_chain_layers_-_package_deleted_in_second_layer",
 			pkgs: []*extractor.Package{
 				{
-					Name:      "foo",
-					PURLType:  purl.TypeGeneric,
-					Locations: []string{fooFile},
-					Plugins:   []string{fakeLayerExtractor.Name()},
+					Name:     "foo",
+					PURLType: purl.TypeGeneric,
+					Location: extractor.LocationFromPath(fooFile),
+					Plugins:  []string{fakeLayerExtractor.Name()},
 				},
 			},
 			extractor: fakeLayerExtractor,
@@ -167,7 +214,7 @@ func TestPopulateLayerDetails(t *testing.T) {
 				{
 					Name:          fooPackage,
 					PURLType:      purl.TypeGeneric,
-					Locations:     []string{fooFile},
+					Location:      extractor.LocationFromPath(fooFile),
 					Plugins:       []string{fakeLayerExtractor.Name()},
 					LayerMetadata: lm(0),
 				},
@@ -177,16 +224,16 @@ func TestPopulateLayerDetails(t *testing.T) {
 			name: "packages_in_multiple_chain_layers_-_package_added_in_third_layer",
 			pkgs: []*extractor.Package{
 				{
-					Name:      "foo",
-					PURLType:  purl.TypeGeneric,
-					Locations: []string{fooFile},
-					Plugins:   []string{fakeLayerExtractor.Name()},
+					Name:     "foo",
+					PURLType: purl.TypeGeneric,
+					Location: extractor.LocationFromPath(fooFile),
+					Plugins:  []string{fakeLayerExtractor.Name()},
 				},
 				{
-					Name:      "baz",
-					PURLType:  purl.TypeGeneric,
-					Locations: []string{bazFile},
-					Plugins:   []string{fakeLayerExtractor.Name()},
+					Name:     "baz",
+					PURLType: purl.TypeGeneric,
+					Location: extractor.LocationFromPath(bazFile),
+					Plugins:  []string{fakeLayerExtractor.Name()},
 				},
 			},
 			extractor: fakeLayerExtractor,
@@ -199,14 +246,14 @@ func TestPopulateLayerDetails(t *testing.T) {
 				{
 					Name:          fooPackage,
 					PURLType:      purl.TypeGeneric,
-					Locations:     []string{fooFile},
+					Location:      extractor.LocationFromPath(fooFile),
 					Plugins:       []string{fakeLayerExtractor.Name()},
 					LayerMetadata: lm(0),
 				},
 				{
 					Name:          bazPackage,
 					PURLType:      purl.TypeGeneric,
-					Locations:     []string{bazFile},
+					Location:      extractor.LocationFromPath(bazFile),
 					Plugins:       []string{fakeLayerExtractor.Name()},
 					LayerMetadata: lm(2),
 				},
@@ -216,22 +263,22 @@ func TestPopulateLayerDetails(t *testing.T) {
 			name: "packages_in_multiple_chain_layers_-_bar_package_added_back_in_last_layer",
 			pkgs: []*extractor.Package{
 				{
-					Name:      fooPackage,
-					PURLType:  purl.TypeGeneric,
-					Locations: []string{fooFile},
-					Plugins:   []string{fakeLayerExtractor.Name()},
+					Name:     fooPackage,
+					PURLType: purl.TypeGeneric,
+					Location: extractor.LocationFromPath(fooFile),
+					Plugins:  []string{fakeLayerExtractor.Name()},
 				},
 				{
-					Name:      barPackage,
-					PURLType:  purl.TypeGeneric,
-					Locations: []string{barFile},
-					Plugins:   []string{fakeLayerExtractor.Name()},
+					Name:     barPackage,
+					PURLType: purl.TypeGeneric,
+					Location: extractor.LocationFromPath(barFile),
+					Plugins:  []string{fakeLayerExtractor.Name()},
 				},
 				{
-					Name:      bazPackage,
-					PURLType:  purl.TypeGeneric,
-					Locations: []string{bazFile},
-					Plugins:   []string{fakeLayerExtractor.Name()},
+					Name:     bazPackage,
+					PURLType: purl.TypeGeneric,
+					Location: extractor.LocationFromPath(bazFile),
+					Plugins:  []string{fakeLayerExtractor.Name()},
 				},
 			},
 			extractor: fakeLayerExtractor,
@@ -245,21 +292,21 @@ func TestPopulateLayerDetails(t *testing.T) {
 				{
 					Name:          fooPackage,
 					PURLType:      purl.TypeGeneric,
-					Locations:     []string{fooFile},
+					Location:      extractor.LocationFromPath(fooFile),
 					Plugins:       []string{fakeLayerExtractor.Name()},
 					LayerMetadata: lm(0),
 				},
 				{
 					Name:          barPackage,
 					PURLType:      purl.TypeGeneric,
-					Locations:     []string{barFile},
+					Location:      extractor.LocationFromPath(barFile),
 					Plugins:       []string{fakeLayerExtractor.Name()},
 					LayerMetadata: lm(3),
 				},
 				{
 					Name:          bazPackage,
 					PURLType:      purl.TypeGeneric,
-					Locations:     []string{bazFile},
+					Location:      extractor.LocationFromPath(bazFile),
 					Plugins:       []string{fakeLayerExtractor.Name()},
 					LayerMetadata: lm(2),
 				},
@@ -269,28 +316,28 @@ func TestPopulateLayerDetails(t *testing.T) {
 			name: "package_in_multiple_chain_layers_-_foo_package_overwritten_in_last_layer",
 			pkgs: []*extractor.Package{
 				{
-					Name:      fooPackage,
-					PURLType:  purl.TypeGeneric,
-					Locations: []string{fooFile},
-					Plugins:   []string{fakeLayerExtractor.Name()},
+					Name:     fooPackage,
+					PURLType: purl.TypeGeneric,
+					Location: extractor.LocationFromPath(fooFile),
+					Plugins:  []string{fakeLayerExtractor.Name()},
 				},
 				{
-					Name:      foo2Package,
-					PURLType:  purl.TypeGeneric,
-					Locations: []string{fooFile},
-					Plugins:   []string{fakeLayerExtractor.Name()},
+					Name:     foo2Package,
+					PURLType: purl.TypeGeneric,
+					Location: extractor.LocationFromPath(fooFile),
+					Plugins:  []string{fakeLayerExtractor.Name()},
 				},
 				{
-					Name:      barPackage,
-					PURLType:  purl.TypeGeneric,
-					Locations: []string{barFile},
-					Plugins:   []string{fakeLayerExtractor.Name()},
+					Name:     barPackage,
+					PURLType: purl.TypeGeneric,
+					Location: extractor.LocationFromPath(barFile),
+					Plugins:  []string{fakeLayerExtractor.Name()},
 				},
 				{
-					Name:      bazPackage,
-					PURLType:  purl.TypeGeneric,
-					Locations: []string{bazFile},
-					Plugins:   []string{fakeLayerExtractor.Name()},
+					Name:     bazPackage,
+					PURLType: purl.TypeGeneric,
+					Location: extractor.LocationFromPath(bazFile),
+					Plugins:  []string{fakeLayerExtractor.Name()},
 				},
 			},
 			extractor: fakeLayerExtractor,
@@ -305,28 +352,28 @@ func TestPopulateLayerDetails(t *testing.T) {
 				{
 					Name:          fooPackage,
 					PURLType:      purl.TypeGeneric,
-					Locations:     []string{fooFile},
+					Location:      extractor.LocationFromPath(fooFile),
 					Plugins:       []string{fakeLayerExtractor.Name()},
 					LayerMetadata: lm(0),
 				},
 				{
 					Name:          foo2Package,
 					PURLType:      purl.TypeGeneric,
-					Locations:     []string{fooFile},
+					Location:      extractor.LocationFromPath(fooFile),
 					Plugins:       []string{fakeLayerExtractor.Name()},
 					LayerMetadata: lm(4),
 				},
 				{
 					Name:          barPackage,
 					PURLType:      purl.TypeGeneric,
-					Locations:     []string{barFile},
+					Location:      extractor.LocationFromPath(barFile),
 					Plugins:       []string{fakeLayerExtractor.Name()},
 					LayerMetadata: lm(3),
 				},
 				{
 					Name:          bazPackage,
 					PURLType:      purl.TypeGeneric,
-					Locations:     []string{bazFile},
+					Location:      extractor.LocationFromPath(bazFile),
 					Plugins:       []string{fakeLayerExtractor.Name()},
 					LayerMetadata: lm(2),
 				},
@@ -336,10 +383,10 @@ func TestPopulateLayerDetails(t *testing.T) {
 			name: "chain_layer_with_invalid_diffID",
 			pkgs: []*extractor.Package{
 				{
-					Name:      fooPackage,
-					PURLType:  purl.TypeGeneric,
-					Locations: []string{fooFile},
-					Plugins:   []string{fakeLayerExtractor.Name()},
+					Name:     fooPackage,
+					PURLType: purl.TypeGeneric,
+					Location: extractor.LocationFromPath(fooFile),
+					Plugins:  []string{fakeLayerExtractor.Name()},
 				},
 			},
 			chainLayers: []image.ChainLayer{
@@ -368,16 +415,198 @@ func TestPopulateLayerDetails(t *testing.T) {
 			},
 			wantPackages: []*extractor.Package{
 				{
-					Name:      fooPackage,
-					PURLType:  purl.TypeGeneric,
-					Locations: []string{fooFile},
-					Plugins:   []string{fakeLayerExtractor.Name()},
+					Name:     fooPackage,
+					PURLType: purl.TypeGeneric,
+					Location: extractor.LocationFromPath(fooFile),
+					Plugins:  []string{fakeLayerExtractor.Name()},
 					LayerMetadata: &extractor.LayerMetadata{
 						Index:   0,
 						DiffID:  digest.Digest(""),
 						ChainID: digest.Digest("chain-id-invalid"),
 						Command: "command-0",
 					},
+				},
+			},
+		},
+		{
+			name: "apk_packages_with_os_release_added_in_later_layer",
+			pkgs: []*extractor.Package{
+				{
+					Name:     "musl",
+					Version:  "1.2.4-r1",
+					PURLType: purl.TypeApk,
+					Metadata: &apkmeta.Metadata{
+						PackageName:  "musl",
+						OriginName:   "musl",
+						OSID:         "wolfi",
+						OSVersionID:  "20230201",
+						Architecture: "x86_64",
+					},
+					Location: extractor.LocationFromPath("lib/apk/db/installed"),
+					Plugins:  []string{apk.Name},
+				},
+				{
+					Name:     "busybox",
+					Version:  "1.36.1-r2",
+					PURLType: purl.TypeApk,
+					Metadata: &apkmeta.Metadata{
+						PackageName:  "busybox",
+						OriginName:   "busybox",
+						OSID:         "wolfi",
+						OSVersionID:  "20230201",
+						Architecture: "x86_64",
+					},
+					Location: extractor.LocationFromPath("lib/apk/db/installed"),
+					Plugins:  []string{apk.Name},
+				},
+				{
+					Name:     "curl",
+					Version:  "8.4.0-r0",
+					PURLType: purl.TypeApk,
+					Metadata: &apkmeta.Metadata{
+						PackageName:  "curl",
+						OriginName:   "curl",
+						OSID:         "wolfi",
+						OSVersionID:  "20230201",
+						Architecture: "x86_64",
+					},
+					Location: extractor.LocationFromPath("lib/apk/db/installed"),
+					Plugins:  []string{apk.Name},
+				},
+			},
+			extractor: apkExtractor,
+			chainLayers: buildFakeChainLayersFromDiffs(t, []map[string]string{
+				{
+					"lib/apk/db/installed": "P:musl\nV:1.2.4-r1\nA:x86_64\no:musl\n\nP:busybox\nV:1.36.1-r2\nA:x86_64\no:busybox\n\n",
+				},
+				{
+					"etc/os-release": "ID=wolfi\nVERSION_ID=20230201\n",
+				},
+				{
+					"lib/apk/db/installed": "P:musl\nV:1.2.4-r1\nA:x86_64\no:musl\n\nP:busybox\nV:1.36.1-r2\nA:x86_64\no:busybox\n\nP:curl\nV:8.4.0-r0\nA:x86_64\no:curl\n\n",
+				},
+			}),
+			wantPackages: []*extractor.Package{
+				{
+					Name:     "musl",
+					Version:  "1.2.4-r1",
+					PURLType: purl.TypeApk,
+					Metadata: &apkmeta.Metadata{
+						PackageName:  "musl",
+						OriginName:   "musl",
+						OSID:         "wolfi",
+						OSVersionID:  "20230201",
+						Architecture: "x86_64",
+					},
+					Location:      extractor.LocationFromPath("lib/apk/db/installed"),
+					Plugins:       []string{apk.Name},
+					LayerMetadata: lm(0),
+				},
+				{
+					Name:     "busybox",
+					Version:  "1.36.1-r2",
+					PURLType: purl.TypeApk,
+					Metadata: &apkmeta.Metadata{
+						PackageName:  "busybox",
+						OriginName:   "busybox",
+						OSID:         "wolfi",
+						OSVersionID:  "20230201",
+						Architecture: "x86_64",
+					},
+					Location:      extractor.LocationFromPath("lib/apk/db/installed"),
+					Plugins:       []string{apk.Name},
+					LayerMetadata: lm(0),
+				},
+				{
+					Name:     "curl",
+					Version:  "8.4.0-r0",
+					PURLType: purl.TypeApk,
+					Metadata: &apkmeta.Metadata{
+						PackageName:  "curl",
+						OriginName:   "curl",
+						OSID:         "wolfi",
+						OSVersionID:  "20230201",
+						Architecture: "x86_64",
+					},
+					Location:      extractor.LocationFromPath("lib/apk/db/installed"),
+					Plugins:       []string{apk.Name},
+					LayerMetadata: lm(2),
+				},
+			},
+		},
+		{
+			name: "apk_packages_with_os_release_upgraded_in_later_layer",
+			pkgs: []*extractor.Package{
+				{
+					Name:     "musl",
+					Version:  "1.2.4-r1",
+					PURLType: purl.TypeApk,
+					Metadata: &apkmeta.Metadata{
+						PackageName:  "musl",
+						OriginName:   "musl",
+						OSID:         "alpine",
+						OSVersionID:  "3.18.5",
+						Architecture: "x86_64",
+					},
+					Location: extractor.LocationFromPath("lib/apk/db/installed"),
+					Plugins:  []string{apk.Name},
+				},
+				{
+					Name:     "alpine-release",
+					Version:  "3.18.5-r0",
+					PURLType: purl.TypeApk,
+					Metadata: &apkmeta.Metadata{
+						PackageName:  "alpine-release",
+						OriginName:   "alpine-base",
+						OSID:         "alpine",
+						OSVersionID:  "3.18.5",
+						Architecture: "x86_64",
+					},
+					Location: extractor.LocationFromPath("lib/apk/db/installed"),
+					Plugins:  []string{apk.Name},
+				},
+			},
+			extractor: apkExtractor,
+			chainLayers: buildFakeChainLayersFromDiffs(t, []map[string]string{
+				{
+					"etc/os-release":       "ID=alpine\nVERSION_ID=3.18.4\n",
+					"lib/apk/db/installed": "P:musl\nV:1.2.4-r1\nA:x86_64\no:musl\n\nP:alpine-release\nV:3.18.4-r0\nA:x86_64\no:alpine-base\n\n",
+				},
+				{
+					"etc/os-release":       "ID=alpine\nVERSION_ID=3.18.5\n",
+					"lib/apk/db/installed": "P:musl\nV:1.2.4-r1\nA:x86_64\no:musl\n\nP:alpine-release\nV:3.18.5-r0\nA:x86_64\no:alpine-base\n\n",
+				},
+			}),
+			wantPackages: []*extractor.Package{
+				{
+					Name:     "musl",
+					Version:  "1.2.4-r1",
+					PURLType: purl.TypeApk,
+					Metadata: &apkmeta.Metadata{
+						PackageName:  "musl",
+						OriginName:   "musl",
+						OSID:         "alpine",
+						OSVersionID:  "3.18.5",
+						Architecture: "x86_64",
+					},
+					Location:      extractor.LocationFromPath("lib/apk/db/installed"),
+					Plugins:       []string{apk.Name},
+					LayerMetadata: lm(0),
+				},
+				{
+					Name:     "alpine-release",
+					Version:  "3.18.5-r0",
+					PURLType: purl.TypeApk,
+					Metadata: &apkmeta.Metadata{
+						PackageName:  "alpine-release",
+						OriginName:   "alpine-base",
+						OSID:         "alpine",
+						OSVersionID:  "3.18.5",
+						Architecture: "x86_64",
+					},
+					Location:      extractor.LocationFromPath("lib/apk/db/installed"),
+					Plugins:       []string{apk.Name},
+					LayerMetadata: lm(1),
 				},
 			},
 		},
@@ -390,9 +619,69 @@ func TestPopulateLayerDetails(t *testing.T) {
 				Extractors:     []filesystem.Extractor{tc.extractor},
 			}
 			inv := inventory.Inventory{Packages: tc.pkgs}
-			PopulateLayerDetails(t.Context(), &inv, tc.chainLayers, []filesystem.Extractor{fakeLayerExtractor}, config)
+			PopulateLayerDetails(t.Context(), &inv, tc.chainLayers, []filesystem.Extractor{fakeLayerExtractor, apkExtractor}, config)
 			if diff := cmp.Diff(tc.wantPackages, inv.Packages, cmpopts.IgnoreFields(extractor.LayerMetadata{}, "ParentContainer")); diff != "" {
 				t.Errorf("PopulateLayerDetails(ctx, %v, %v, config) returned an unexpected diff (-want +got): %v", tc.pkgs, tc.chainLayers, diff)
+			}
+		})
+	}
+}
+
+func TestNewPackageKey(t *testing.T) {
+	tests := []struct {
+		name   string
+		pkg    *extractor.Package
+		plugin string
+		want   packageKey
+	}{
+		{
+			name: "os_package_uses_name_and_version_without_purl",
+			pkg: &extractor.Package{
+				Name:     "musl",
+				Version:  "1.2.4-r1",
+				PURLType: purl.TypeApk,
+				Metadata: &apkmeta.Metadata{
+					PackageName: "musl",
+					OSID:        "wolfi",
+					OSVersionID: "20230201",
+				},
+			},
+			plugin: apk.Name,
+			want: packageKey{
+				name:    "musl",
+				version: "1.2.4-r1",
+			},
+		},
+		{
+			name: "non_os_package_with_purl_uses_purl_string",
+			pkg: &extractor.Package{
+				Name:     "foo",
+				Version:  "1.0.0",
+				PURLType: purl.TypePyPi,
+			},
+			plugin: "python/wheelegg",
+			want: packageKey{
+				purl: "pkg:pypi/foo@1.0.0",
+			},
+		},
+		{
+			name: "non_os_package_without_purl_falls_back_to_name_and_version",
+			pkg: &extractor.Package{
+				Name:    "app/server",
+				Version: "1.0.0",
+			},
+			plugin: "ffa/unknownbinaries",
+			want: packageKey{
+				name:    "app/server",
+				version: "1.0.0",
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := newPackageKey(tc.pkg, tc.plugin); got != tc.want {
+				t.Errorf("newPackageKey(%v, %q) = %+v, want %+v", tc.pkg, tc.plugin, got, tc.want)
 			}
 		})
 	}
