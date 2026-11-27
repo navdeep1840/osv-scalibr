@@ -283,6 +283,18 @@ func TestExtractor_Extract(t *testing.T) {
 						DepGroupVals: []string{},
 					},
 				},
+				{
+					Name:      "is-number",
+					Version:   "7.0.0",
+					PURLType:  purl.TypeNPM,
+					Locations: []string{"testdata/v9-keys-v6-header.yaml"},
+					SourceCode: &extractor.SourceCodeIdentifier{
+						Commit: "98e8ff1da1a89f93d1397a24d7413ed15421c139",
+					},
+					Metadata: osv.DepGroupMetadata{
+						DepGroupVals: []string{},
+					},
+				},
 			},
 		},
 		{
